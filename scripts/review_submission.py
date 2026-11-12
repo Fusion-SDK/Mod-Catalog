@@ -171,10 +171,17 @@ def main():
         "Mod Creator",
         "Mod Version",
         "GitHub Release Download URL",
-        "SHA-256",
         "Source Repository",
         "Mod Icon URL",
     ]
+
+    if not (
+    get_field(fields, "SHA-256")
+    or get_field(fields, "Package SHA-256")
+):
+    problems.append(
+        "**SHA-256:** This field is required."
+    )
 
     for field in required_fields:
         if not get_field(fields, field):
@@ -197,7 +204,11 @@ def main():
             "**Mod Version:** Use a version such as `1.0.0` or `v1.0.0`."
         )
 
-    sha = get_field(fields, "SHA-256")
+    sha = (
+        get_field(fields, "SHA-256")
+        or get_field(fields, "Package SHA-256")
+    )
+    
     if sha and not re.fullmatch(r"[a-fA-F0-9]{64}", sha):
         problems.append(
             "**SHA-256:** Provide exactly 64 hexadecimal characters."
