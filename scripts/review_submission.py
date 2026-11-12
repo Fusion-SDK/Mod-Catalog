@@ -1,7 +1,25 @@
 
+import hashlib
+import io
+import json
+import os
 import re
 import sys
-from urllib.parse import urlparse
+import urllib.request
+import urllib.parse
+import zipfile
+from pathlib import PurePosixPath
+
+MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024
+MAX_ARCHIVE_FILES = 10000
+MAX_UNCOMPRESSED_SIZE = 500 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 200
+
+ALLOWED_DOWNLOAD_HOSTS = {
+    "github.com",
+    "release-assets.githubusercontent.com",
+    "objects.githubusercontent.com",
+}
 
 def parse_fields(body):
     fields = {}
@@ -15,101 +33,254 @@ def parse_fields(body):
     return fields
 
 
+def get_field(fields, name):
+    value = fields.get(name, "").strip()
+    if not value or value == "_No response_":
+        return ""
+    return value
+
+
+def valid_https_url(value):
+    try:
+        parsed = urllib.parse.urlparse(value)
+        return (
+            parsed.scheme == "https"
+            and bool(parsed.hostname)
+            and not parsed.username
+            and not parsed.password
+        )
+    except ValueError:
+        return False
+
+
+class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlparse(newurl)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname not in ALLOWED_DOWNLOAD_HOSTS
+        ):
+            raise ValueError("Download redirected to an untrusted host.")
+
+        return super().redirect_request(
+            req, fp, code, msg, headers, newurl
+        )
+
+
+def download_package(url):
+    parsed = urllib.parse.urlparse(url)
+
+    if (
+        not valid_https_url(url)
+        or parsed.hostname not in {"github.com"}
+        or "/releases/download/" not in parsed.path
+    ):
+        raise ValueError(
+            "Use a public GitHub Release asset download URL."
+        )
+
+    opener = urllib.request.build_opener(SafeRedirectHandler())
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Fusion-Submission-Guard/1.0"}
+    )
+
+    with opener.open(request, timeout=30) as response:
+        final_host = urllib.parse.urlparse(response.geturl()).hostname
+
+        if final_host not in ALLOWED_DOWNLOAD_HOSTS:
+            raise ValueError("Package came from an untrusted host.")
+
+        content_length = response.headers.get("Content-Length")
+        if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
+            raise ValueError("Package exceeds the 100 MB download limit.")
+
+        data = response.read(MAX_DOWNLOAD_SIZE + 1)
+
+    if len(data) > MAX_DOWNLOAD_SIZE:
+        raise ValueError("Package exceeds the 100 MB download limit.")
+
+    if not data:
+        raise ValueError("The downloaded package is empty.")
+
+    return data
+
+
+def inspect_archive(data):
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            entries = archive.infolist()
+
+            if not entries:
+                raise ValueError("The package archive is empty.")
+
+            if len(entries) > MAX_ARCHIVE_FILES:
+                raise ValueError("The archive contains too many files.")
+
+            total_size = 0
+
+            for entry in entries:
+                path = entry.filename.replace("\\", "/")
+                parsed = PurePosixPath(path)
+
+                if (
+                    parsed.is_absolute()
+                    or ".." in parsed.parts
+                    or (parsed.parts and ":" in parsed.parts[0])
+                ):
+                    raise ValueError(
+                        f"Unsafe archive path detected: {entry.filename}"
+                    )
+
+                total_size += entry.file_size
+
+                if total_size > MAX_UNCOMPRESSED_SIZE:
+                    raise ValueError(
+                        "Archive expands beyond the 500 MB limit."
+                    )
+
+                if entry.file_size > 0:
+                    ratio = entry.file_size / max(entry.compress_size, 1)
+                    if ratio > MAX_COMPRESSION_RATIO:
+                        raise ValueError(
+                            f"Suspicious compression ratio: {entry.filename}"
+                        )
+
+            broken_file = archive.testzip()
+
+            if broken_file:
+                raise ValueError(
+                    f"Corrupted archive entry: {broken_file}"
+                )
+
+    except zipfile.BadZipFile:
+        raise ValueError(
+            "The submitted package is not a valid ZIP-based archive."
+        )
+
+
 def main():
     body = sys.stdin.read()
     fields = parse_fields(body)
     problems = []
 
-    def get(name):
-        value = fields.get(name, "").strip()
-        if not value or value == "_No response_":
-            return ""
-        return value
-
-    def check_url(field, label, required_host=None):
-        value = get(field)
-
-        if not value:
-            problems.append(f"- **{label}:** This field is missing.")
-            return
-
-        parsed = urlparse(value)
-
-        if parsed.scheme != "https" or not parsed.hostname:
-            problems.append(
-                f"- **{label}:** Provide a valid HTTPS URL."
-            )
-        elif required_host and parsed.hostname.lower() != required_host:
-            problems.append(
-                f"- **{label}:** The URL must use {required_host}."
-            )
-
-    for field in [
+    required_fields = [
         "Mod Name",
         "Mod ID",
         "Mod Description",
         "Mod Creator",
         "Mod Version",
-        "Package SHA-256"
-    ]:
-        if not get(field):
-            problems.append(f"- **{field}:** This field is required.")
+        "GitHub Release Download URL",
+        "SHA-256",
+        "Source Repository",
+        "Mod Icon URL",
+    ]
 
-    mod_id = get("Mod ID")
-    if mod_id and not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,127}", mod_id):
+    for field in required_fields:
+        if not get_field(fields, field):
+            problems.append(f"**{field}:** This field is required.")
+
+    mod_id = get_field(fields, "Mod ID")
+    if mod_id and not re.fullmatch(
+        r"[a-z0-9][a-z0-9._-]{0,127}", mod_id
+    ):
         problems.append(
-            "- **Mod ID:** Use lowercase letters, numbers, dots, "
+            "**Mod ID:** Use lowercase letters, numbers, dots, "
             "hyphens, or underscores."
         )
 
-    version = get("Mod Version")
+    version = get_field(fields, "Mod Version")
     if version and not re.fullmatch(
-        r"v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?",
-        version
+        r"v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version
     ):
         problems.append(
-            "- **Mod Version:** Use a version such as `1.0.0` or `v1.0.0`."
+            "**Mod Version:** Use a version such as `1.0.0` or `v1.0.0`."
         )
 
-    sha = get("Package SHA-256")
+    sha = get_field(fields, "SHA-256")
     if sha and not re.fullmatch(r"[a-fA-F0-9]{64}", sha):
         problems.append(
-            "- **Package SHA-256:** Provide exactly 64 hexadecimal characters "
-            "calculated from the submitted ZIP file."
+            "**SHA-256:** Provide exactly 64 hexadecimal characters."
         )
 
-    check_url(
-        "GitHub Release Download URL",
-        "GitHub Release Download URL",
-        "github.com"
-    )
-    check_url(
-        "Source Repository",
-        "Source Repository",
-        "github.com"
-    )
-    check_url("Mod Icon URL", "Mod Icon URL")
+    download_url = get_field(fields, "GitHub Release Download URL")
+    source_url = get_field(fields, "Source Repository")
+    icon_url = get_field(fields, "Mod Icon URL")
 
-    permissions = get("Permissions")
+    if download_url and not valid_https_url(download_url):
+        problems.append(
+            "**Download URL:** Provide a valid HTTPS URL."
+        )
+
+    if source_url:
+        parsed = urllib.parse.urlparse(source_url)
+        if (
+            not valid_https_url(source_url)
+            or parsed.hostname != "github.com"
+            or len(parsed.path.strip("/").split("/")) != 2
+        ):
+            problems.append(
+                "**Source Repository:** Provide a GitHub repository URL."
+            )
+
+    if icon_url and not valid_https_url(icon_url):
+        problems.append(
+            "**Mod Icon URL:** Provide a valid HTTPS URL."
+        )
+
+    permissions = get_field(fields, "Permissions")
 
     if "I own this mod or have permission to submit it." not in permissions:
         problems.append(
-            "- **Ownership permission:** Confirm that you own the mod "
+            "**Ownership permission:** Confirm that you own the mod "
             "or have permission to submit it."
         )
 
     if "I have permission to distribute this downloadable package." not in permissions:
         problems.append(
-            "- **Distribution permission:** Confirm that you have "
+            "**Distribution permission:** Confirm that you have "
             "permission to distribute the package."
         )
 
-    if problems:
-        print("NEEDS_CHANGES")
-        print("\n".join(problems))
+    # Only download and inspect the package if its basic fields are valid.
+    if not problems:
+        try:
+            package = download_package(download_url)
+            actual_sha = hashlib.sha256(package).hexdigest()
+
+            if actual_sha.lower() != sha.lower():
+                raise ValueError(
+                    "SHA-256 does not match the downloaded package."
+                )
+
+            inspect_archive(package)
+
+        except Exception as error:
+            problems.append(f"**Package validation:** {error}")
+
+    passed = not problems
+
+    report = (
+        "## Fusion Submission Guard: Passed\n\n"
+        "Automated checks passed. Manual review is still required."
+        if passed
+        else "## Fusion Submission Guard: Changes required\n\n"
+        + "\n".join(f"- {problem}" for problem in problems)
+    )
+
+    output_path = os.environ.get("GITHUB_OUTPUT")
+
+    if output_path:
+        with open(output_path, "a", encoding="utf-8") as output:
+            output.write(f"passed={'true' if passed else 'false'}\n")
+            output.write("report<<FUSION_REPORT\n")
+            output.write(report + "\n")
+            output.write("FUSION_REPORT\n")
     else:
-        print("READY_FOR_REVIEW")
-        print("Automated field checks passed. Manual review is still required.")
+        print(report)
+
+    if not passed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
