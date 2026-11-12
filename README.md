@@ -3,7 +3,7 @@
 The official directory of mods registered with Fusion. Browse available mods, discover new additions, and find information about each mod.
 
 ## Registered Mods
-
+<!-- MOD_TABLE_START -->
 | Mod Name | Mod Description | Mod Creator | Mod Version | Mod Icon |
 |---|---|---|---|---|
 |No Mods Currently Registered| - | - | - | - |
