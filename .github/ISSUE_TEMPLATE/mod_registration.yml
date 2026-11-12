@@ -1,9 +1,9 @@
 
 name: Register Fusion Mod
 description: Submit a mod for inclusion in the Fusion Mod Catalog.
-title: "[MOD REGISTRATION] "
+title: "[MOD REGISTRATION FORM] "
 labels:
-  - mod-submission
+  - Mod Submission
 body:
   - type: markdown
     attributes:
@@ -58,6 +58,17 @@ body:
       description: Link to the downloadable mod package.
     validations:
       required: true
+
+      
+  - type: input
+    id: sha256
+    attributes:
+      label: Package SHA-256
+      description: The 64-character SHA-256 hash of the downloadable package.
+      placeholder: Paste the package SHA-256 hash
+    validations:
+      required: true
+
 
   - type: input
     id: source
