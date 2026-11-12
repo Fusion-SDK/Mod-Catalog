@@ -87,7 +87,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number,
-              labels: ["needs-changes"]
+              labels: ["Needs Changes"]
             });
 
             await github.rest.issues.createComment({
