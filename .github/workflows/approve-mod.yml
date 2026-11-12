@@ -59,44 +59,37 @@ jobs:
           printf '%s' "$ISSUE_BODY" | python scripts/review_submission.py
           
       # 5. If scanning fails, remove approval and request changes.
-      - name: Reject failed scan
-        if: steps.scan.outputs.passed != 'true'
-        uses: actions/github-script@v7
-        env:
-          REVIEW_REPORT: ${{ steps.scan.outputs.report }}
-        with:
-          script: |
+                script: |
             const issue_number = context.issue.number;
-            const report = process.env.REVIEW_REPORT ||
-              "## Fusion Submission Guard: Scan failed\n\n" +
-              "The automated scanner did not complete successfully. " +
-              "Please contact a repository maintainer.";
+            const report = process.env.REVIEW_REPORT;
 
-            try {
-              await github.rest.issues.removeLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                name: "Approved"
-              });
-            } catch (error) {
+            const body = report
+              ? report
+              : "## Fusion Submission Guard: Scan failed\n\n" +
+                "The scanner failed without producing a report. " +
+                "Check the workflow run logs for details.";
+
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              name: "Approved"
+            }).catch(error => {
               if (error.status !== 404) throw error;
-            }
+            });
 
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number,
-              labels: ["Needs Changes"]
+              labels: ["needs-changes"]
             });
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number,
-              body: report + "\n\n" +
-                "The approval was blocked. Please correct the issues " +
-                "above and request another review."
+              body: body + "\n\nApproval was blocked. Correct these issues and request another review."
             });
 
       # 6. Stop the workflow if scanning failed.
