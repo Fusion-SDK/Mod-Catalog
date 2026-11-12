@@ -1,0 +1,86 @@
+
+name: Register Fusion Mod
+description: Submit a mod for inclusion in the Fusion Mod Catalog.
+title: "[MOD REGISTRATION] "
+labels:
+  - mod-submission
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for submitting your mod to Fusion!
+        Submissions will be reviewed before being added to the catalog.
+
+  - type: input
+    id: mod_name
+    attributes:
+      label: Mod Name
+      placeholder: Example Mod
+    validations:
+      required: true
+
+  - type: input
+    id: mod_id
+    attributes:
+      label: Mod ID
+      description: Unique ID using lowercase letters, numbers, hyphens, or underscores.
+      placeholder: example-mod
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Mod Description
+      placeholder: Explain what your mod does.
+    validations:
+      required: true
+
+  - type: input
+    id: creator
+    attributes:
+      label: Mod Creator
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Mod Version
+      placeholder: 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: download
+    attributes:
+      label: GitHub Release Download URL
+      description: Link to the downloadable mod package.
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source Repository
+      description: Link to the mod's source repository.
+    validations:
+      required: true
+
+  - type: input
+    id: icon
+    attributes:
+      label: Mod Icon URL
+      description: Direct link to the mod icon.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: permissions
+    attributes:
+      label: Permissions
+      options:
+        - label: I own this mod or have permission to submit it.
+          required: true
+        - label: I have permission to distribute this downloadable package.
+          required: true
