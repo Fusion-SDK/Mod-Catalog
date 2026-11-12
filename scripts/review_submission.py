@@ -279,19 +279,19 @@ def main():
         + "\n".join(f"- {problem}" for problem in problems)
     )
 
-    output_path = os.environ.get("GITHUB_OUTPUT")
+   output_path = os.environ.get("GITHUB_OUTPUT")
 
-    if output_path:
-        with open(output_path, "a", encoding="utf-8") as output:
-            output.write(f"passed={'true' if passed else 'false'}\n")
-            output.write("report<<FUSION_REPORT\n")
-            output.write(report + "\n")
-            output.write("FUSION_REPORT\n")
-    else:
-        print(report)
+if output_path:
+    with open(output_path, "a", encoding="utf-8") as output:
+        output.write(f"passed={'true' if passed else 'false'}\n")
+        output.write("report<<FUSION_REPORT\n")
+        output.write(report + "\n")
+        output.write("FUSION_REPORT\n")
 
-    if not passed:
-        sys.exit(1)
+print(report)
+
+if not passed:
+    sys.exit(1)
 
 
 if __name__ == "__main__":
