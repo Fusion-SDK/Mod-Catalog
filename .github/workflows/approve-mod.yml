@@ -50,14 +50,14 @@ jobs:
           python-version: "3.x"
 
       # 4. Run Fusion Submission Guard.
-      - name: Scan mod submission
+           - name: Scan mod submission
         id: scan
         continue-on-error: true
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           printf '%s' "$ISSUE_BODY" | python scripts/review_submission.py
-
+          
       # 5. If scanning fails, remove approval and request changes.
       - name: Reject failed scan
         if: steps.scan.outputs.passed != 'true'
