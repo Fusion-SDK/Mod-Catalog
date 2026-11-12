@@ -6,7 +6,7 @@ The official directory of mods registered with Fusion. Browse available mods, di
 <!-- MOD_TABLE_START -->
 | Mod Name | Mod Description | Mod Creator | Mod Version | Mod Icon |
 |---|---|---|---|---|
-|No Mods Currently Registered| - | - | - | - |
+| No registered mods yet | - | - | - | - |
 <!-- MOD_TABLE_END -->
 
 *The directory is updated as mods are registered and approved.*
