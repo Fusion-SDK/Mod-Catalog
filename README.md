@@ -6,7 +6,7 @@ The official directory of mods registered with Fusion. Browse available mods, di
 <!-- MOD_TABLE_START -->
 | Mod Name | Mod Description | Mod Creator | Mod Version | Mod Icon |
 |---|---|---|---|---|
-| Fusion Installer | test | Fusion | 0.1.0 | ![Fusion Installer](https://github.com/Fusion-SDK/.github/raw/main/profile/assets/fusion-icon.png) |
+| No registered mods yet | - | - | - | - |
 <!-- MOD_TABLE_END -->
 
 *The directory is updated as mods are registered and approved.*
