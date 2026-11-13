@@ -127,7 +127,7 @@ body:
     attributes:
       label: Supported Platforms
       description: Comma-separated platform names. Supported values: windows, macos, linux, android, ios.
-      placeholder: windows, linux
+      placeholder: windows, linux, macos, android, ios
     validations:
       required: true
 
@@ -149,12 +149,13 @@ body:
     validations:
       required: false
 
+  
   - type: textarea
     id: dependencies
     attributes:
       label: Dependencies
-      description: Optional comma-separated Mod IDs required by this mod.
-      placeholder: example-library, another-mod
+      description: "Optional comma-separated Mod IDs required by this mod."
+      placeholder: "example-library, another-mod"
     validations:
       required: false
 
@@ -162,8 +163,8 @@ body:
     id: conflicts
     attributes:
       label: Conflicts
-      description: Optional comma-separated Mod IDs incompatible with this mod.
-      placeholder: conflicting-mod
+      description: "Optional comma-separated Mod IDs incompatible with this mod."
+      placeholder: "conflicting-mod"
     validations:
       required: false
 
