@@ -6,15 +6,22 @@ on:
     types: [labeled]
 
 permissions:
+  contents: read
   issues: write
+
+concurrency:
+  group: fusion-mod-rejection
+  cancel-in-progress: false
 
 jobs:
   reject:
-    if: github.event.label.name == 'Rejected'
+    if: github.event.label.name == 'Rejected' && github.event.issue.state == 'open'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Verify approver permissions
+      # 1. Get GitHub repository permission.
+      - name: Get moderator GitHub permission
+        id: github-permission
         uses: actions/github-script@v7
         with:
           script: |
@@ -25,14 +32,25 @@ jobs:
                 username: context.actor
               });
 
-            const permission = result.data.permission;
+            core.setOutput("permission", result.data.permission);
 
-            if (!["admin", "maintain", "write"].includes(permission)) {
-              core.setFailed(
-                "Only repository maintainers can reject mods."
-              );
-            }
+      # 2. Load Fusion staff configuration.
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # 3. Verify moderator or administrator role.
+      - name: Verify Fusion staff role
+        env:
+          REQUIRED_ROLE: moderators
+          GITHUB_PERMISSION: ${{ steps.github-permission.outputs.permission }}
+        run: python scripts/check_permissions.py
+
+      # 4. Comment on rejected submission.
       - name: Comment on rejected submission
         uses: actions/github-script@v7
         with:
@@ -51,6 +69,7 @@ jobs:
               ].join("\n")
             });
 
+      # 5. Close rejected submission.
       - name: Close rejected submission
         uses: actions/github-script@v7
         with:
@@ -61,4 +80,16 @@ jobs:
               issue_number: context.issue.number,
               state: "closed",
               state_reason: "not_planned"
+            });
+
+      # 6. Lock rejected submission.
+      - name: Lock rejected submission
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.lock({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              lock_reason: "resolved"
             });
