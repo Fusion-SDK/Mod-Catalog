@@ -1,0 +1,105 @@
+
+name: Approve Fusion Mod Removal
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: fusion-mod-removal
+  cancel-in-progress: false
+
+jobs:
+  remove:
+    if: >-
+      github.event.label.name == 'Removal Approved' &&
+      github.event.issue.state == 'open'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get GitHub permission
+        id: permission
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const result =
+              await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor
+              });
+
+            core.setOutput("permission", result.data.permission);
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Verify Fusion staff permission
+        env:
+          REQUIRED_ROLE: moderators
+          GITHUB_PERMISSION: ${{ steps.permission.outputs.permission }}
+        run: python scripts/check_permissions.py
+
+      - name: Revalidate removal request
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: python scripts/validate_removal.py
+
+      - name: Remove exact catalog entry
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: python scripts/remove_mod.py
+
+      - name: Commit catalog changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog/index.json
+          git commit -m "Remove catalog mod from issue #${{ github.event.issue.number }}"
+          git push
+
+      - name: Regenerate README
+        run: python scripts/generate_readme.py
+
+      - name: Commit README changes
+        run: |
+          git add README.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Update README after mod removal"
+            git push
+          fi
+
+      - name: Close and lock removal request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "## Fusion Mod Removal Complete\n\nThe matching catalog entry has been removed successfully."
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: "closed",
+              state_reason: "completed"
+            });
+
+            await github.rest.issues.lock({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              lock_reason: "resolved"
+            });
