@@ -171,7 +171,7 @@ if mod.get("approved") is not True:
         "sha256": mod.get("sha256", ""),
         "packageType": mod.get("packageType", ""),
         "changelog": required(fields, "Changelog"),
-        "approvedUpdateIssue": issue_url
+        "approvedUpdateIssue": mod.get("lastUpdateIssue", "")
     })
 
     mod["latestChangelog"] = required(fields, "Changelog")
