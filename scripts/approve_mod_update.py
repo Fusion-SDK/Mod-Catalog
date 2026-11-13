@@ -170,6 +170,7 @@ if mod.get("approved") is not True:
         "releaseUrl": mod.get("releaseUrl", ""),
         "sha256": mod.get("sha256", ""),
         "packageType": mod.get("packageType", ""),
+        "changelog": required(fields, "Changelog"),
         "approvedUpdateIssue": issue_url
     })
 
