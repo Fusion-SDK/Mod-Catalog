@@ -337,6 +337,43 @@ def validate_mod(mod, known_ids):
     )
 
 
+def validate_dependency_cycles(mods):
+    dependency_map = {
+        mod["id"]: set(mod["dependencies"])
+        for mod in mods
+    }
+
+    visited = set()
+    active = set()
+    path = []
+
+    def visit(mod_id):
+        if mod_id in active:
+            cycle_start = path.index(mod_id)
+            cycle = path[cycle_start:] + [mod_id]
+
+            raise CatalogValidationError(
+                "Circular dependency detected: "
+                + " -> ".join(cycle)
+            )
+
+        if mod_id in visited:
+            return
+
+        active.add(mod_id)
+        path.append(mod_id)
+
+        for dependency in dependency_map[mod_id]:
+            visit(dependency)
+
+        path.pop()
+        active.remove(mod_id)
+        visited.add(mod_id)
+
+    for mod_id in dependency_map:
+        visit(mod_id)
+
+
 def validate_catalog():
     require(CATALOG_PATH.is_file(), f"Catalog not found: {CATALOG_PATH}")
 
@@ -395,6 +432,8 @@ def validate_catalog():
 
     for mod in mods:
         validate_mod(mod, known_ids)
+
+    validate_dependency_cycles(mods)
 
     print(
         f"Catalog validation passed: {len(mods)} mod(s) checked."
