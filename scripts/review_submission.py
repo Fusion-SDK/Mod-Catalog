@@ -34,7 +34,7 @@ PACKAGE_EXTENSIONS = {
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 VERSION_PATTERN = re.compile(
-    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:[-+][0-9A-Za-z.-]+)?$"
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$"
 )
 SHA_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")
 
@@ -93,7 +93,11 @@ def version_tuple(version):
     if not match:
         raise ValueError(f"Invalid version: {version}")
 
-    return tuple(int(part) for part in match.groups())
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3))
+    )
 
 
 class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
