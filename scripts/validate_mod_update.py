@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 CATALOG = Path("catalog/index.json")
+STAFF_CONFIG = Path("config/staff.json")
 
 
 def fail(message):
@@ -20,16 +21,15 @@ def valid_https(url):
 
 
 def main():
-    if not CATALOG.exists():
-        fail("Catalog file is missing.")
-
     try:
         catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        fail("Catalog JSON is invalid.")
+        staff = json.loads(STAFF_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        fail("Catalog or staff configuration is missing or invalid.")
 
     mod_id = os.getenv("MOD_ID", "").strip().lower()
     developer = os.getenv("DEVELOPER", "").strip().lstrip("@").lower()
+    issue_author = os.getenv("ISSUE_AUTHOR", "").strip().lower()
     current_version = os.getenv("CURRENT_VERSION", "").strip()
     new_version = os.getenv("NEW_VERSION", "").strip()
     download_url = os.getenv("DOWNLOAD_URL", "").strip()
@@ -37,6 +37,9 @@ def main():
     package_type = os.getenv("PACKAGE_TYPE", "").strip().upper()
     sha256 = os.getenv("SHA256", "").strip().lower()
     changelog = os.getenv("CHANGELOG", "").strip()
+
+    if not developer or developer != issue_author:
+        fail("Developer username must match the GitHub issue author.")
 
     mods = catalog.get("mods", [])
 
@@ -63,19 +66,20 @@ def main():
         fail("The mod maintainer list is invalid.")
 
     maintainers = [
-        username.lower()
-        for username in maintainers
-        if isinstance(username, str)
+        name.lower() for name in maintainers
+        if isinstance(name, str)
     ]
+
+    roles = staff.get("roles", {})
+    administrators = roles.get("administrators", [])
+
+    if not isinstance(administrators, list):
+        fail("Staff administrator configuration is invalid.")
 
     administrators = [
-        username.lower()
-        for username in catalog.get("administrators", [])
-        if isinstance(username, str)
+        name.lower() for name in administrators
+        if isinstance(name, str)
     ]
-
-    if not developer:
-        fail("Developer GitHub Username is required.")
 
     if developer not in maintainers and developer not in administrators:
         fail("This GitHub account is not authorized to update this mod.")
@@ -91,10 +95,9 @@ def main():
     if not re.fullmatch(version_pattern, new_version):
         fail("New version must use MAJOR.MINOR.PATCH format.")
 
-    old = tuple(map(int, current_version.split(".")))
-    new = tuple(map(int, new_version.split(".")))
-
-    if new <= old:
+    if tuple(map(int, new_version.split("."))) <= tuple(
+        map(int, current_version.split("."))
+    ):
         fail("New version must be greater than the current version.")
 
     if not valid_https(download_url):
