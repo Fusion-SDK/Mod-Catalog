@@ -142,10 +142,11 @@ jobs:
           echo "Update validation failed."
           exit 1
 
-      - name: Apply approved update
+      - name: Apply Approved Update
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
         run: python scripts/approve_mod_update.py
 
       - name: Commit catalog changes
