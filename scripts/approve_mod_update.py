@@ -107,7 +107,42 @@ def main():
 
     mod = matches[0]
 
-    if mod.get("approved") is not True:
+developer = required(fields, "Developer GitHub Username").strip().lstrip("@").lower()
+issue_author = os.environ.get("ISSUE_AUTHOR", "").strip().lower()
+
+if not developer or developer != issue_author:
+    raise ValueError(
+        "Developer username must match the GitHub issue author."
+    )
+
+maintainers = mod.get("maintainers", [])
+
+if not isinstance(maintainers, list):
+    raise ValueError("Mod maintainer list must be a JSON array.")
+
+maintainers = [
+    username.lower()
+    for username in maintainers
+    if isinstance(username, str)
+]
+
+staff_path = ROOT / "config" / "staff.json"
+staff = json.loads(staff_path.read_text(encoding="utf-8"))
+administrators = staff.get("roles", {}).get("administrators", [])
+
+if not isinstance(administrators, list):
+    raise ValueError("Staff administrator list is invalid.")
+
+administrators = [
+    username.lower()
+    for username in administrators
+    if isinstance(username, str)
+]
+
+if developer not in maintainers and developer not in administrators:
+    raise ValueError("Developer is not authorized to update this mod.")
+
+if mod.get("approved") is not True:
         raise ValueError("This mod is not approved.")
 
     if mod.get("version") != submitted_current:
