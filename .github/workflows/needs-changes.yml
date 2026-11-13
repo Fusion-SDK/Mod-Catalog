@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   review:
-    if: github.event.label.name == 'needs-changes' && github.event.issue.state == 'open'
+    if: github.event.label.name == 'Needs Changes' && github.event.issue.state == 'open'
     runs-on: ubuntu-latest
 
     steps:
