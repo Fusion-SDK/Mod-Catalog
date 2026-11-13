@@ -50,22 +50,22 @@ jobs:
           GITHUB_PERMISSION: ${{ steps.github-permission.outputs.permission }}
         run: python scripts/check_permissions.py
 
-      - name: Extract Update Fields
+      - name: Extract update fields
         id: fields
         uses: actions/github-script@v7
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
         with:
-          scripts: |
+          script: |
             const body = process.env.ISSUE_BODY || "";
 
             const fields = {
-              MOD_ID: "MOD ID",
-              DEVELOPER: "Developer Github Username",
+              MOD_ID: "Mod ID",
+              DEVELOPER: "Developer GitHub Username",
               CURRENT_VERSION: "Current Catalog Version",
               NEW_VERSION: "Proposed New Version",
-              DOWNLOAD_URL: "Update Package Download URL",
-              REALEASE_URL: "Upstream Realease URL",
+              DOWNLOAD_URL: "Updated Package Download URL",
+              RELEASE_URL: "Upstream Release URL",
               PACKAGE_TYPE: "Package Type",
               SHA256: "SHA-256 Checksum",
               CHANGELOG: "Changelog"
@@ -81,8 +81,7 @@ jobs:
               core.setOutput(key, match ? match[1].trim() : "");
             }
 
-
-      - name: Revalidate Update Submission
+      - name: Revalidate update submission
         id: validation
         env:
           MOD_ID: ${{ steps.fields.outputs.MOD_ID }}
@@ -95,58 +94,16 @@ jobs:
           SHA256: ${{ steps.fields.outputs.SHA256 }}
           CHANGELOG: ${{ steps.fields.outputs.CHANGELOG }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
-        run: |
-          set +e
-          python scripts/validate_mod_update.py > validation.txt 2>&1
-          result=$?
-          cat validation.txt
-          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
-          exit 0
-          
-      - name: Extract update fields
-        id: fields
-        uses: actions/github-script@v7
-        env:
-          ISSUE_BODY: ${{ github.event.issue.body }}
-        with:
-          script: |
-            const body = process.env.ISSUE_BODY || "";
+        run: python scripts/validate_mod_update.py
 
-            const fields = {
-              MOD_ID: "Mod ID",
-              CURRENT_VERSION: "Current Catalog Version",
-              NEW_VERSION: "Proposed New Version",
-              DOWNLOAD_URL: "Updated Package Download URL",
-              RELEASE_URL: "Upstream Release URL",
-              PACKAGE_TYPE: "Package Type",
-              SHA256: "SHA-256 Checksum"
-            };
-
-            for (const [key, heading] of Object.entries(fields)) {
-              const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const regex = new RegExp(
-                `### ${escaped}\\s*\\r?\\n+([\\s\\S]*?)(?=\\r?\\n### |$)`
-              );
-
-              const match = body.match(regex);
-              core.setOutput(key, match ? match[1].trim() : "");
-            }
-
-
-      - name: Block invalid update
-        if: steps.validation.outputs.exit_code != '0'
-        run: |
-          echo "Update validation failed."
-          exit 1
-
-      - name: Apply Approved Update
+      - name: Apply approved update
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
         run: python scripts/approve_mod_update.py
 
-      - name: Regenerate Catalog README
+      - name: Regenerate catalog README
         run: python scripts/generate_readme.py
 
       - name: Commit catalog changes
