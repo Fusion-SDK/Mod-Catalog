@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   validate:
-    if: contains(github.event.issue.labels.*.name, 'removal-request')
+    if: contains(github.event.issue.labels.*.name, 'Removal Request')
     runs-on: ubuntu-latest
 
     steps:
