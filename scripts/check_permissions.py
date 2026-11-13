@@ -12,6 +12,20 @@ ROLE_LEVELS = {
     "administrators": 3
 }
 
+GITHUB_PERMISSIONS = {
+    "read": 1,
+    "triage": 2,
+    "write": 3,
+    "maintain": 4,
+    "admin": 5
+}
+
+REQUIRED_GITHUB_PERMISSIONS = {
+    "reviewers": 2,
+    "moderators": 3,
+    "administrators": 3
+}
+
 
 def load_staff():
     if not STAFF_FILE.exists():
@@ -34,8 +48,10 @@ def load_staff():
         if not isinstance(members, list):
             raise RuntimeError(f"Invalid member list: {role}")
 
-        if any(not isinstance(member, str) or not member.strip()
-               for member in members):
+        if any(
+            not isinstance(member, str) or not member.strip()
+            for member in members
+        ):
             raise RuntimeError(f"Invalid username in role: {role}")
 
     return roles
@@ -49,12 +65,13 @@ def main():
     ).strip().lower()
 
     if not username:
-        print("Missing GitHub actor.")
-        return 1
+        raise RuntimeError("Missing GitHub actor.")
 
     if required_role not in ROLE_LEVELS:
-        print("Invalid required role.")
-        return 1
+        raise RuntimeError("Invalid required role.")
+
+    if github_permission not in GITHUB_PERMISSIONS:
+        raise RuntimeError("Unknown GitHub repository permission.")
 
     roles = load_staff()
 
@@ -71,16 +88,15 @@ def main():
                 member_role = role
 
     if member_role is None:
-        print(f"DENIED: {username} is not Fusion staff.")
-        return 1
+        raise RuntimeError(f"DENIED: {username} is not Fusion staff.")
 
     if ROLE_LEVELS[member_role] < ROLE_LEVELS[required_role]:
-        print(f"DENIED: {username} lacks the required role.")
-        return 1
+        raise RuntimeError("DENIED: Insufficient Fusion staff role.")
 
-    if github_permission not in ("admin", "maintain", "write"):
-        print("DENIED: Insufficient GitHub repository permission.")
-        return 1
+    minimum_permission = REQUIRED_GITHUB_PERMISSIONS[required_role]
+
+    if GITHUB_PERMISSIONS[github_permission] < minimum_permission:
+        raise RuntimeError("DENIED: Insufficient GitHub repository permission.")
 
     print(f"AUTHORIZED: {username} has the {member_role} role.")
     return 0
@@ -90,5 +106,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Exception as error:
-        print(f"Permission check failed: {error}")
+        print(f"Permission check failed: {error}", file=sys.stderr)
         sys.exit(1)
