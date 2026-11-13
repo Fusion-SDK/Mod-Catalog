@@ -50,10 +50,17 @@ jobs:
           GITHUB_PERMISSION: ${{ steps.github-permission.outputs.permission }}
         run: python scripts/check_permissions.py
 
+     
       - name: Revalidate update submission
         id: validation
         env:
-          ISSUE_BODY: ${{ github.event.issue.body }}
+          MOD_ID: ${{ steps.fields.outputs.MOD_ID }}
+          CURRENT_VERSION: ${{ steps.fields.outputs.CURRENT_VERSION }}
+          NEW_VERSION: ${{ steps.fields.outputs.NEW_VERSION }}
+          DOWNLOAD_URL: ${{ steps.fields.outputs.DOWNLOAD_URL }}
+          RELEASE_URL: ${{ steps.fields.outputs.RELEASE_URL }}
+          PACKAGE_TYPE: ${{ steps.fields.outputs.PACKAGE_TYPE }}
+          SHA256: ${{ steps.fields.outputs.SHA256 }}
         run: |
           set +e
           python scripts/validate_mod_update.py > validation.txt 2>&1
@@ -61,7 +68,6 @@ jobs:
           cat validation.txt
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"
           exit 0
-
         
       - name: Extract update fields
         id: fields
