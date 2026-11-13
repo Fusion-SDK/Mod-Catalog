@@ -1,0 +1,94 @@
+
+name: Mod Update Submission
+description: Submit an update for an existing Fusion catalog mod.
+title: "[MOD UPDATE] "
+labels: ["mod-update"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Fusion Mod Update
+        Use this form to submit a new version of an already registered mod.
+        Do not use this form to register a brand-new mod.
+
+  - type: input
+    id: mod_id
+    attributes:
+      label: Mod ID
+      description: The exact ID of the mod in catalog/index.json.
+      placeholder: example-mod
+    validations:
+      required: true
+
+  - type: input
+    id: developer
+    attributes:
+      label: Developer GitHub Username
+      placeholder: username
+    validations:
+      required: true
+
+  - type: input
+    id: current_version
+    attributes:
+      label: Current Catalog Version
+      placeholder: 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: new_version
+    attributes:
+      label: Proposed New Version
+      placeholder: 1.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: download_url
+    attributes:
+      label: Updated Package Download URL
+      description: Direct HTTPS link to the new package.
+      placeholder: https://example.com/releases/mod.zip
+    validations:
+      required: true
+
+  - type: input
+    id: release_url
+    attributes:
+      label: Upstream Release URL
+      description: Link to the official release page or repository.
+      placeholder: https://github.com/username/project/releases
+    validations:
+      required: true
+
+  - type: dropdown
+    id: package_type
+    attributes:
+      label: Package Type
+      options:
+        - ZIP
+        - GEODE
+        - EXE
+    validations:
+      required: true
+
+  - type: input
+    id: sha256
+    attributes:
+      label: SHA-256 Checksum
+      description: SHA-256 checksum of the updated package.
+      placeholder: 64-character hexadecimal checksum
+    validations:
+      required: true
+
+  - type: textarea
+    id: changelog
+    attributes:
+      label: Changelog
+      description: Explain what changed in this version.
+      placeholder: |
+        - Added...
+        - Fixed...
+    validations:
+      required: true
