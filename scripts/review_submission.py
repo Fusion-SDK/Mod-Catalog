@@ -22,11 +22,21 @@ ALLOWED_DOWNLOAD_HOSTS = {
     "objects.githubusercontent.com",
 }
 
+SUPPORTED_RUNTIMES = {"fusion", "geode"}
+SUPPORTED_PLATFORMS = {
+    "windows", "macos", "linux", "android", "ios"
+}
+
 PACKAGE_EXTENSIONS = {
     "ZIP": ".zip",
     "GEODE": ".geode",
-    "EXE": ".exe",
 }
+
+ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+VERSION_PATTERN = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:[-+][0-9A-Za-z.-]+)?$"
+)
+SHA_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")
 
 
 def parse_fields(body):
@@ -35,6 +45,7 @@ def parse_fields(body):
 
     for section in sections[1:]:
         lines = section.splitlines()
+
         if lines:
             fields[lines[0].strip()] = "\n".join(lines[1:]).strip()
 
@@ -44,14 +55,28 @@ def parse_fields(body):
 def get_field(fields, *names):
     for name in names:
         value = fields.get(name, "").strip()
+
         if value and value != "_No response_":
             return value
+
     return ""
+
+
+def parse_list(value):
+    if not value or value == "_No response_":
+        return []
+
+    return [
+        item.strip()
+        for item in re.split(r"[,\n]", value)
+        if item.strip()
+    ]
 
 
 def valid_https_url(value):
     try:
         parsed = urllib.parse.urlparse(value)
+
         return (
             parsed.scheme == "https"
             and bool(parsed.hostname)
@@ -62,6 +87,15 @@ def valid_https_url(value):
         return False
 
 
+def version_tuple(version):
+    match = VERSION_PATTERN.fullmatch(version)
+
+    if not match:
+        raise ValueError(f"Invalid version: {version}")
+
+    return tuple(int(part) for part in match.groups())
+
+
 class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parsed = urllib.parse.urlparse(newurl)
@@ -69,6 +103,8 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         if (
             parsed.scheme != "https"
             or parsed.hostname not in ALLOWED_DOWNLOAD_HOSTS
+            or parsed.username
+            or parsed.password
         ):
             raise ValueError("Download redirected to an untrusted host.")
 
@@ -93,7 +129,7 @@ def download_package(url):
 
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "Fusion-Submission-Guard/1.0"}
+        headers={"User-Agent": "Fusion-Submission-Guard/2.0"}
     )
 
     with opener.open(request, timeout=30) as response:
@@ -115,6 +151,7 @@ def download_package(url):
             except ValueError as error:
                 if "500 MB" in str(error):
                     raise
+
                 raise ValueError("Invalid download Content-Length.")
 
         data = response.read(MAX_DOWNLOAD_SIZE + 1)
@@ -128,7 +165,7 @@ def download_package(url):
     return data
 
 
-def inspect_archive(data, require_geode_manifest=False):
+def inspect_archive(data, geode_mod_id=None, geode_version=None):
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             entries = archive.infolist()
@@ -166,7 +203,6 @@ def inspect_archive(data, require_geode_manifest=False):
                     )
 
                 filenames.add(entry.filename)
-
                 total_size += entry.file_size
 
                 if total_size > MAX_UNCOMPRESSED_SIZE:
@@ -185,7 +221,7 @@ def inspect_archive(data, require_geode_manifest=False):
                             f"Suspicious compression ratio: {entry.filename}"
                         )
 
-            if require_geode_manifest:
+            if geode_mod_id is not None:
                 manifest = next(
                     (
                         entry for entry in entries
@@ -211,10 +247,23 @@ def inspect_archive(data, require_geode_manifest=False):
                     raise ValueError("GEODE mod.json must contain an object.")
 
                 for key in ("id", "version"):
-                    if not isinstance(metadata.get(key), str) or not metadata[key].strip():
+                    if (
+                        not isinstance(metadata.get(key), str)
+                        or not metadata[key].strip()
+                    ):
                         raise ValueError(
                             f"GEODE mod.json is missing a valid {key}."
                         )
+
+                if metadata["id"] != geode_mod_id:
+                    raise ValueError(
+                        "Geode manifest ID does not match the submitted Mod ID."
+                    )
+
+                if metadata["version"] != geode_version:
+                    raise ValueError(
+                        "Geode manifest version does not match the submitted version."
+                    )
 
             broken_file = archive.testzip()
 
@@ -228,7 +277,6 @@ def inspect_archive(data, require_geode_manifest=False):
 
 
 def inspect_executable(data):
-    # Validate Windows PE structure without executing the file.
     if len(data) < 64 or data[:2] != b"MZ":
         raise ValueError("File does not have a valid Windows executable header.")
 
@@ -282,20 +330,19 @@ def inspect_executable(data):
         raise ValueError("File is not marked as an executable image.")
 
 
-def validate_package(package, package_type):
+def validate_package(package, package_type, mod_id, version):
     if package_type == "ZIP":
         inspect_archive(package)
 
     elif package_type == "GEODE":
-        inspect_archive(package, require_geode_manifest=True)
-
-    elif package_type == "EXE":
-        inspect_executable(package)
+        inspect_archive(
+            package,
+            geode_mod_id=mod_id,
+            geode_version=version
+        )
 
     else:
-        raise ValueError(
-            "Unsupported package type. Choose ZIP, GEODE, or EXE."
-        )
+        raise ValueError("Unsupported package type.")
 
 
 def run_scan():
@@ -309,69 +356,164 @@ def run_scan():
         "Mod Description",
         "Mod Creator",
         "Mod Version",
+        "Mod Runtime",
+        "Package Type",
         "GitHub Release Download URL",
+        "Upstream Release URL",
         "Source Repository",
         "Mod Icon URL",
+        "Supported Platforms",
     ]
 
     for field in required_fields:
         if not get_field(fields, field):
             problems.append(f"**{field}:** This field is required.")
 
-    sha = get_field(fields, "SHA-256", "Package SHA-256")
+    mod_id = get_field(fields, "Mod ID").lower()
+    version = get_field(fields, "Mod Version")
+    runtime = get_field(fields, "Mod Runtime").lower()
+    package_type = get_field(fields, "Package Type").upper()
+
+    sha = get_field(fields, "Package SHA-256", "SHA-256")
 
     if not sha:
-        problems.append("**SHA-256:** This field is required.")
-    elif not re.fullmatch(r"[a-fA-F0-9]{64}", sha):
+        problems.append("**Package SHA-256:** This field is required.")
+    elif not SHA_PATTERN.fullmatch(sha):
         problems.append(
-            "**SHA-256:** Provide exactly 64 hexadecimal characters."
+            "**Package SHA-256:** Provide exactly 64 hexadecimal characters."
         )
 
-    package_type = get_field(fields, "Package Type").upper()
+    if mod_id and not ID_PATTERN.fullmatch(mod_id):
+        problems.append("**Mod ID:** Invalid ID format.")
+
+    if version:
+        try:
+            version_tuple(version)
+        except ValueError:
+            problems.append(
+                "**Mod Version:** Use MAJOR.MINOR.PATCH format."
+            )
+
+    if runtime not in SUPPORTED_RUNTIMES:
+        problems.append(
+            "**Mod Runtime:** Select Fusion or Geode."
+        )
+
+    expected_package = {
+        "fusion": "ZIP",
+        "geode": "GEODE"
+    }
 
     if package_type not in PACKAGE_EXTENSIONS:
         problems.append(
-            "**Package Type:** Select ZIP, GEODE, or EXE."
+            "**Package Type:** Select ZIP or GEODE."
         )
+    elif runtime in expected_package:
+        if package_type != expected_package[runtime]:
+            problems.append(
+                f"**Package Type:** Runtime '{runtime}' requires "
+                f"'{expected_package[runtime]}'."
+            )
 
-    mod_id = get_field(fields, "Mod ID")
-
-    if mod_id and not re.fullmatch(
-        r"[a-z0-9][a-z0-9._-]{0,127}", mod_id
-    ):
-        problems.append(
-            "**Mod ID:** Use lowercase letters, numbers, dots, "
-            "hyphens, or underscores."
+    platforms = [
+        platform.lower()
+        for platform in parse_list(
+            get_field(fields, "Supported Platforms")
         )
+    ]
 
-    version = get_field(fields, "Mod Version")
+    if platforms:
+        if len(platforms) != len(set(platforms)):
+            problems.append("**Supported Platforms:** Duplicate values found.")
 
-    if version and not re.fullmatch(
-        r"v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version
+        invalid = set(platforms) - SUPPORTED_PLATFORMS
+
+        if invalid:
+            problems.append(
+                "**Supported Platforms:** Unsupported values: "
+                + ", ".join(sorted(invalid))
+            )
+
+    geode_minimum = get_field(fields, "Minimum Geode Version")
+    geode_maximum = get_field(fields, "Maximum Geode Version")
+
+    if runtime == "geode":
+        if not geode_minimum:
+            problems.append(
+                "**Minimum Geode Version:** Required for Geode mods."
+            )
+        else:
+            try:
+                minimum_tuple = version_tuple(geode_minimum)
+
+                if geode_maximum:
+                    maximum_tuple = version_tuple(geode_maximum)
+
+                    if maximum_tuple < minimum_tuple:
+                        problems.append(
+                            "**Maximum Geode Version:** Cannot be lower "
+                            "than the minimum version."
+                        )
+            except ValueError:
+                problems.append(
+                    "**Geode Versions:** Use MAJOR.MINOR.PATCH format."
+                )
+
+    dependencies = parse_list(get_field(fields, "Dependencies"))
+    conflicts = parse_list(get_field(fields, "Conflicts"))
+
+    for label, identifiers in (
+        ("Dependencies", dependencies),
+        ("Conflicts", conflicts)
     ):
+        if len(identifiers) != len(set(identifiers)):
+            problems.append(f"**{label}:** Duplicate IDs are not allowed.")
+
+        for identifier in identifiers:
+            if not ID_PATTERN.fullmatch(identifier):
+                problems.append(
+                    f"**{label}:** Invalid mod ID: {identifier}"
+                )
+
+            if identifier == mod_id:
+                problems.append(
+                    f"**{label}:** A mod cannot reference itself."
+                )
+
+    overlap = set(dependencies) & set(conflicts)
+
+    if overlap:
         problems.append(
-            "**Mod Version:** Use a version such as `1.0.0` or `v1.0.0`."
+            "**Dependencies/Conflicts:** The same mod cannot be both "
+            "a dependency and a conflict."
         )
 
     download_url = get_field(fields, "GitHub Release Download URL")
     source_url = get_field(fields, "Source Repository")
+    release_url = get_field(fields, "Upstream Release URL")
     icon_url = get_field(fields, "Mod Icon URL")
 
     if download_url:
         if not valid_https_url(download_url):
-            problems.append("**Download URL:** Provide a valid HTTPS URL.")
-        elif package_type in PACKAGE_EXTENSIONS:
-            filename = urllib.parse.unquote(
-                urllib.parse.urlparse(download_url).path
-            ).lower()
+            problems.append("**Download URL:** Invalid HTTPS URL.")
+        else:
+            parsed = urllib.parse.urlparse(download_url)
 
-            expected_extension = PACKAGE_EXTENSIONS[package_type]
-
-            if not filename.endswith(expected_extension):
+            if (
+                parsed.hostname != "github.com"
+                or "/releases/download/" not in parsed.path
+            ):
                 problems.append(
-                    f"**Package Type:** The download URL must point to "
-                    f"a `{expected_extension}` file."
+                    "**Download URL:** Use a public GitHub Release asset URL."
                 )
+            elif package_type in PACKAGE_EXTENSIONS:
+                filename = urllib.parse.unquote(parsed.path).lower()
+
+                if not filename.endswith(PACKAGE_EXTENSIONS[package_type]):
+                    problems.append(
+                        f"**Download URL:** Must point to a "
+                        f"{PACKAGE_EXTENSIONS[package_type]} file."
+                    )
 
     if source_url:
         parsed = urllib.parse.urlparse(source_url)
@@ -383,6 +525,17 @@ def run_scan():
         ):
             problems.append(
                 "**Source Repository:** Provide a GitHub repository URL."
+            )
+
+    if release_url:
+        parsed = urllib.parse.urlparse(release_url)
+
+        if (
+            not valid_https_url(release_url)
+            or parsed.hostname != "github.com"
+        ):
+            problems.append(
+                "**Upstream Release URL:** Provide a valid GitHub URL."
             )
 
     if icon_url and not valid_https_url(icon_url):
@@ -412,7 +565,12 @@ def run_scan():
                     "SHA-256 does not match the downloaded package."
                 )
 
-            validate_package(package, package_type)
+            validate_package(
+                package,
+                package_type,
+                mod_id,
+                version
+            )
 
         except Exception as error:
             problems.append(f"**Package validation:** {error}")
