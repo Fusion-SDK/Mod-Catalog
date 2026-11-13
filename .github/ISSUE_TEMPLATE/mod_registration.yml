@@ -1,15 +1,19 @@
 
 name: Register Fusion Mod
-description: Submit a mod for inclusion in the Fusion Mod Catalog.
-title: "[MOD REGISTRATION FORM] "
+description: Submit a Geometry Dash mod for inclusion in the Fusion Mod Catalog.
+title: "[MOD REGISTRATION] "
 labels:
   - Mod Submission
+
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for submitting your mod to Fusion!
+
         Submissions will be reviewed before being added to the catalog.
+
+        Make sure all information is accurate. Geode mods require the Geode loader.
 
   - type: input
     id: mod_name
@@ -40,6 +44,7 @@ body:
     id: creator
     attributes:
       label: Mod Creator
+      description: Display name of the original mod creator.
     validations:
       required: true
 
@@ -52,14 +57,24 @@ body:
       required: true
 
   - type: dropdown
+    id: runtime
+    attributes:
+      label: Mod Runtime
+      description: Select which environment this mod requires.
+      options:
+        - Fusion
+        - Geode
+    validations:
+      required: true
+
+  - type: dropdown
     id: package_type
     attributes:
       label: Package Type
-      description: Select the package format.
+      description: Select the downloadable package format.
       options:
         - ZIP
         - GEODE
-        - EXE
     validations:
       required: true
 
@@ -67,11 +82,37 @@ body:
     id: download
     attributes:
       label: GitHub Release Download URL
-      description: Link directly to the downloadable package file.
+      description: Direct link to the downloadable package file.
+      placeholder: https://github.com/owner/repository/releases/download/v1.0.0/mod.zip
     validations:
       required: true
 
-      
+  - type: input
+    id: release
+    attributes:
+      label: Upstream Release URL
+      description: Link to the official release page.
+      placeholder: https://github.com/owner/repository/releases
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source Repository
+      description: Link to the mod's source repository.
+      placeholder: https://github.com/owner/repository
+    validations:
+      required: true
+
+  - type: input
+    id: icon
+    attributes:
+      label: Mod Icon URL
+      description: Direct HTTPS link to the mod icon.
+    validations:
+      required: true
+
   - type: input
     id: sha256
     attributes:
@@ -81,22 +122,50 @@ body:
     validations:
       required: true
 
-
-  - type: input
-    id: source
+  - type: textarea
+    id: platforms
     attributes:
-      label: Source Repository
-      description: Link to the mod's source repository.
+      label: Supported Platforms
+      description: Comma-separated platform names. Supported values: windows, macos, linux, android, ios.
+      placeholder: windows, linux
     validations:
       required: true
 
   - type: input
-    id: icon
+    id: geode_minimum
     attributes:
-      label: Mod Icon URL
-      description: Direct link to the mod icon.
+      label: Minimum Geode Version
+      description: Required for Geode mods. Leave blank for Fusion mods.
+      placeholder: 4.0.0
     validations:
-      required: true
+      required: false
+
+  - type: input
+    id: geode_maximum
+    attributes:
+      label: Maximum Geode Version
+      description: Optional. Leave blank if there is no known maximum.
+      placeholder: 5.0.0
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Optional comma-separated Mod IDs required by this mod.
+      placeholder: example-library, another-mod
+    validations:
+      required: false
+
+  - type: textarea
+    id: conflicts
+    attributes:
+      label: Conflicts
+      description: Optional comma-separated Mod IDs incompatible with this mod.
+      placeholder: conflicting-mod
+    validations:
+      required: false
 
   - type: checkboxes
     id: permissions
