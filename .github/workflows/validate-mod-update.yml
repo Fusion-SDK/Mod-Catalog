@@ -38,12 +38,14 @@ jobs:
 
             const fields = {
               MOD_ID: "Mod ID",
+              DEVELOPER: "Developer Github Username",
               CURRENT_VERSION: "Current Catalog Version",
               NEW_VERSION: "Proposed New Version",
               DOWNLOAD_URL: "Updated Package Download URL",
               RELEASE_URL: "Upstream Release URL",
               PACKAGE_TYPE: "Package Type",
-              SHA256: "SHA-256 Checksum"
+              SHA256: "SHA-256 Checksum",
+              CHANGELOG: "Changelog"
             };
 
             for (const [key, heading] of Object.entries(fields)) {
