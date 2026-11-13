@@ -1,0 +1,99 @@
+
+name: Fusion Mod Removal Request
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: fusion-removal-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: contains(github.event.issue.labels.*.name, 'removal-request')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Validate removal request
+        id: validation
+        continue-on-error: true
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python scripts/validate_removal.py
+
+      - name: Close invalid request
+        if: steps.validation.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.issue.number;
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              labels: ["Invalid Request"]
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: [
+                "## Fusion Removal Request: Invalid",
+                "",
+                "Your request did not pass catalog validation.",
+                "",
+                "Please check the Mod ID, Mod Name, and Mod Creator.",
+                "",
+                "No catalog entries were deleted."
+              ].join("\n")
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: "closed",
+              state_reason: "not_planned"
+            });
+
+            await github.rest.issues.lock({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              lock_reason: "resolved"
+            });
+
+      - name: Mark valid request
+        if: steps.validation.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                "## Fusion Removal Request: Validated",
+                "",
+                "The submitted information matches a catalog entry.",
+                "",
+                "No catalog changes have been made.",
+                "A Fusion moderator must authorize removal."
+              ].join("\n")
+            });
