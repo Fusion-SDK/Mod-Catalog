@@ -167,7 +167,9 @@ if mod.get("approved") is not True:
     history.append({
         "version": previous_version,
         "downloadUrl": mod.get("downloadUrl", ""),
+        "releaseUrl": mod.get("releaseUrl", ""),
         "sha256": mod.get("sha256", ""),
+        "packageType": mod.get("packageType", ""),
         "approvedUpdateIssue": issue_url
     })
 
