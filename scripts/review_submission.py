@@ -10,7 +10,7 @@ import urllib.parse
 import zipfile
 from pathlib import PurePosixPath
 
-MAX_DOWNLOAD_SIZE = 100 * 1024 * 1024
+MAX_DOWNLOAD_SIZE = 500 * 1024 * 1024
 MAX_ARCHIVE_FILES = 10000
 MAX_UNCOMPRESSED_SIZE = 500 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 200
