@@ -171,6 +171,8 @@ if mod.get("approved") is not True:
         "approvedUpdateIssue": issue_url
     })
 
+    mod["latestChangelog"] = required(fields, "Changelog")
+    mod["lastUpdateBy"] = developer
     mod["version"] = new_version
     mod["downloadUrl"] = download_url
     mod["releaseUrl"] = release_url
