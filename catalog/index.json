@@ -14,6 +14,20 @@
       "downloadUrl": "",
       "sha256": "",
       "approved": false
+    },
+    {
+      "id": "com.fusion.install.test",
+      "name": "Fusion Installer",
+      "description": "test",
+      "creator": "Fusion",
+      "version": "0.1.0",
+      "icon": "https://github.com/Fusion-SDK/.github/raw/main/profile/assets/fusion-icon.png",
+      "repository": "https://github.com/Fusion-SDK/Fusion-Windows-Installer",
+      "releaseUrl": "",
+      "downloadUrl": "https://github.com/Fusion-SDK/Fusion-Windows-Installer/releases/download/Windows_v0.1.0/Fusion-Setup.exe",
+      "sha256": "3163030387d56e071883ea0ae3c3d5c70e69579112b6bca4a90b272576e7dc28",
+      "approved": true,
+      "registrationIssue": "https://github.com/Fusion-SDK/Mod-Catalog/issues/7"
     }
   ]
 }
