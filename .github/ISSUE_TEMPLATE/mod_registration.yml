@@ -126,8 +126,8 @@ body:
     id: platforms
     attributes:
       label: Supported Platforms
-      description: Comma-separated platform names. Supported values: windows, macos, linux, android, ios.
-      placeholder: windows, linux, macos, android, ios
+      description: "Comma-separated platform names. Supported values: windows, macos, linux, android, ios."
+      placeholder: "windows, linux, macos, android, ios"
     validations:
       required: true
 
