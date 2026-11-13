@@ -8,13 +8,16 @@ from urllib.parse import urlparse
 
 CATALOG = Path("catalog/index.json")
 
+
 def fail(message):
     print(f"VALIDATION_FAILED: {message}")
     sys.exit(1)
 
+
 def valid_https(url):
     parsed = urlparse(url)
     return parsed.scheme == "https" and bool(parsed.netloc)
+
 
 def main():
     if not CATALOG.exists():
@@ -25,23 +28,57 @@ def main():
     except json.JSONDecodeError:
         fail("Catalog JSON is invalid.")
 
-    mod_id = os.getenv("MOD_ID", "").strip()
+    mod_id = os.getenv("MOD_ID", "").strip().lower()
+    developer = os.getenv("DEVELOPER", "").strip().lstrip("@").lower()
     current_version = os.getenv("CURRENT_VERSION", "").strip()
     new_version = os.getenv("NEW_VERSION", "").strip()
     download_url = os.getenv("DOWNLOAD_URL", "").strip()
     release_url = os.getenv("RELEASE_URL", "").strip()
     package_type = os.getenv("PACKAGE_TYPE", "").strip().upper()
     sha256 = os.getenv("SHA256", "").strip().lower()
+    changelog = os.getenv("CHANGELOG", "").strip()
 
     mods = catalog.get("mods", [])
 
-    mod = next(
-        (item for item in mods if item.get("id") == mod_id),
-        None
-    )
+    if not isinstance(mods, list):
+        fail("Catalog mods must be a list.")
 
-    if not mod:
-        fail("Mod ID does not exist in the catalog.")
+    matches = [
+        item for item in mods
+        if isinstance(item, dict)
+        and item.get("id", "").lower() == mod_id
+    ]
+
+    if len(matches) != 1:
+        fail("Mod ID must match exactly one catalog entry.")
+
+    mod = matches[0]
+
+    if mod.get("approved") is not True:
+        fail("This mod is not approved for updates.")
+
+    maintainers = mod.get("maintainers", [])
+
+    if not isinstance(maintainers, list):
+        fail("The mod maintainer list is invalid.")
+
+    maintainers = [
+        username.lower()
+        for username in maintainers
+        if isinstance(username, str)
+    ]
+
+    administrators = [
+        username.lower()
+        for username in catalog.get("administrators", [])
+        if isinstance(username, str)
+    ]
+
+    if not developer:
+        fail("Developer GitHub Username is required.")
+
+    if developer not in maintainers and developer not in administrators:
+        fail("This GitHub account is not authorized to update this mod.")
 
     if mod.get("version") != current_version:
         fail("Submitted current version does not match the catalog.")
@@ -72,9 +109,14 @@ def main():
     if not re.fullmatch(r"[a-f0-9]{64}", sha256):
         fail("SHA-256 must contain exactly 64 hexadecimal characters.")
 
+    if not changelog or changelog == "_No response_":
+        fail("A changelog is required.")
+
     print("VALIDATION_PASSED")
     print(f"Mod: {mod.get('name', mod_id)}")
+    print(f"Developer: {developer}")
     print(f"Version: {current_version} -> {new_version}")
+
 
 if __name__ == "__main__":
     main()
