@@ -51,11 +51,23 @@ body:
     validations:
       required: true
 
+   - type: dropdown
+    id: package_type
+    attributes:
+      label: Package Type
+      description: Select the package format.
+      options:
+        - ZIP
+        - GEODE
+        - EXE
+    validations:
+      required: true
+
   - type: input
     id: download
     attributes:
       label: GitHub Release Download URL
-      description: Link to the downloadable mod package.
+      description: Link directly to the downloadable package file.
     validations:
       required: true
 
