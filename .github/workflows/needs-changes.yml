@@ -4,6 +4,8 @@ name: Review Fusion Mod Submission
 on:
   issues:
     types: [labeled]
+  issue_comment:
+    types: [created]
 
 permissions:
   issues: write
@@ -15,13 +17,22 @@ concurrency:
 
 jobs:
   review:
-    if: github.event.label.name == 'Needs Changes' && github.event.issue.state == 'open'
+    if: >-
+      github.event.issue.state == 'open' &&
+      (
+        (github.event_name == 'issues' &&
+         github.event.label.name == 'Needs Changes') ||
+        (github.event_name == 'issue_comment' &&
+         github.event.comment.body == 'Ready for re-review' &&
+         github.event.comment.user.login == github.event.issue.user.login)
+      )
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Get GitHub repository permission.
+      # 1. Get GitHub repository permission for staff-triggered reviews.
       - name: Get reviewer GitHub permission
         id: github-permission
+        if: github.event_name == 'issues'
         uses: actions/github-script@v7
         with:
           script: |
@@ -43,43 +54,56 @@ jobs:
         with:
           python-version: "3.x"
 
-      # 3. Verify Fusion staff role.
+      # 3. Verify Fusion reviewer role for staff-triggered reviews.
       - name: Verify Fusion reviewer role
+        if: github.event_name == 'issues'
         env:
           REQUIRED_ROLE: reviewers
           GITHUB_PERMISSION: ${{ steps.github-permission.outputs.permission }}
         run: python scripts/check_permissions.py
 
-      # 4. Inspect submission.
+      # 4. Inspect the submission and capture the scanner exit code.
       - name: Inspect submission
         id: inspect
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          printf '%s' "$ISSUE_BODY" | python scripts/review_submission.py > review.txt
+          set +e
+
+          printf '%s' "$ISSUE_BODY" | python scripts/review_submission.py > review.txt 2>&1
+          status=$?
+
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+
           cat review.txt
 
-      # 5. Post review report.
+          exit 0
+
+      # 5. Post the review report.
       - name: Post review report
         uses: actions/github-script@v7
+        env:
+          SCAN_EXIT_CODE: ${{ steps.inspect.outputs.exit_code }}
         with:
           script: |
             const fs = require('fs');
+
             const report = fs.readFileSync('review.txt', 'utf8').trim();
+            const scanFailed = process.env.SCAN_EXIT_CODE !== "0";
 
             let message;
 
-            if (report.startsWith("NEEDS_CHANGES")) {
+            if (scanFailed) {
               message = [
                 "## Fusion Submission — Changes Required",
                 "",
-                "Thanks for submitting your mod! Our automated reviewer found the following issues:",
+                "The automated checks did not pass. Please review the report below:",
                 "",
-                report.replace("NEEDS_CHANGES", "").trim(),
+                report || "The scanner did not return a report. A maintainer should inspect the Actions logs.",
                 "",
                 "### What to do next",
                 "1. Edit your original issue.",
-                "2. Correct each item listed above.",
+                "2. Correct the reported problems.",
                 "3. Comment `Ready for re-review` when finished.",
                 "",
                 "Your submission has not been added to the catalog."
@@ -88,7 +112,7 @@ jobs:
               message = [
                 "## Fusion Submission — Automated Checks Passed",
                 "",
-                "The required fields passed automated validation.",
+                "The submission passed automated validation.",
                 "A Fusion maintainer must still complete the manual review.",
                 "",
                 "No catalog entry has been created yet."
