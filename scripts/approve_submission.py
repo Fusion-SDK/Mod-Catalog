@@ -14,6 +14,9 @@ VERSION_PATTERN = re.compile(
 )
 SHA_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")
 
+SUPPORTED_RUNTIMES = {"fusion", "geode"}
+SUPPORTED_PLATFORMS = {"windows", "macos", "linux", "android", "ios"}
+
 
 def parse_fields(body):
     fields = {}
@@ -21,6 +24,7 @@ def parse_fields(body):
 
     for section in sections[1:]:
         lines = section.splitlines()
+
         if not lines:
             continue
 
@@ -41,19 +45,49 @@ def required(fields, name):
     return value
 
 
-def validate_https_url(value, name):
+def optional(fields, name):
+    value = fields.get(name, "").strip()
+
+    if value == "_No response_":
+        return ""
+
+    return value
+
+
+def validate_https_url(value, name, allowed_hosts=None):
     parsed = urlparse(value)
 
     if parsed.scheme != "https" or not parsed.hostname:
         raise ValueError(f"{name} must be a valid HTTPS URL.")
 
+    if allowed_hosts and parsed.hostname.lower() not in allowed_hosts:
+        raise ValueError(
+            f"{name} must use one of these hosts: "
+            + ", ".join(sorted(allowed_hosts))
+        )
+
     return value
+
+
+def parse_list(value):
+    if not value or value == "_No response_":
+        return []
+
+    return [
+        item.strip()
+        for item in re.split(r"[,\n]", value)
+        if item.strip()
+    ]
 
 
 def main():
     body = os.environ["ISSUE_BODY"]
     issue_number = os.environ["ISSUE_NUMBER"]
     issue_url = os.environ["ISSUE_URL"]
+    issue_author = os.environ["ISSUE_AUTHOR"].strip().lower()
+
+    if not issue_author:
+        raise ValueError("GitHub issue author is missing.")
 
     fields = parse_fields(body)
 
@@ -63,14 +97,39 @@ def main():
     creator = required(fields, "Mod Creator")
     version = required(fields, "Mod Version")
 
+    runtime = required(fields, "Mod Runtime").lower()
+    package_type = required(fields, "Package Type").upper()
+
+    if runtime not in SUPPORTED_RUNTIMES:
+        raise ValueError("Runtime must be Fusion or Geode.")
+
+    expected_package = {
+        "fusion": "ZIP",
+        "geode": "GEODE"
+    }
+
+    if package_type != expected_package[runtime]:
+        raise ValueError(
+            f"Runtime '{runtime}' requires package type "
+            f"'{expected_package[runtime]}'."
+        )
+
     download_url = validate_https_url(
         required(fields, "GitHub Release Download URL"),
-        "Download URL"
+        "Download URL",
+        {"github.com"}
     )
 
     repository = validate_https_url(
         required(fields, "Source Repository"),
-        "Source repository"
+        "Source repository",
+        {"github.com"}
+    )
+
+    release_url = validate_https_url(
+        required(fields, "Upstream Release URL"),
+        "Upstream release URL",
+        {"github.com"}
     )
 
     icon = validate_https_url(
@@ -87,15 +146,60 @@ def main():
         raise ValueError("Version must use a valid three-part version.")
 
     if not SHA_PATTERN.fullmatch(sha256):
-        raise ValueError("SHA-256 must contain exactly 64 hexadecimal characters.")
+        raise ValueError(
+            "SHA-256 must contain exactly 64 hexadecimal characters."
+        )
 
-    if urlparse(download_url).hostname != "github.com":
-        raise ValueError("Download URL must point to github.com.")
+    platforms = [
+        platform.lower()
+        for platform in parse_list(
+            required(fields, "Supported Platforms")
+        )
+    ]
 
-    if urlparse(repository).hostname != "github.com":
-        raise ValueError("Source repository must point to github.com.")
+    if not platforms:
+        raise ValueError("At least one supported platform is required.")
+
+    if len(platforms) != len(set(platforms)):
+        raise ValueError("Duplicate platforms are not allowed.")
+
+    invalid_platforms = set(platforms) - SUPPORTED_PLATFORMS
+
+    if invalid_platforms:
+        raise ValueError(
+            "Unsupported platforms: "
+            + ", ".join(sorted(invalid_platforms))
+        )
+
+    dependencies = parse_list(optional(fields, "Dependencies"))
+    conflicts = parse_list(optional(fields, "Conflicts"))
+
+    if mod_id in dependencies or mod_id in conflicts:
+        raise ValueError("A mod cannot depend on or conflict with itself.")
+
+    geode_minimum = None
+    geode_maximum = None
+
+    if runtime == "geode":
+        geode_minimum = required(fields, "Minimum Geode Version")
+
+        if not VERSION_PATTERN.fullmatch(geode_minimum):
+            raise ValueError("Invalid minimum Geode version.")
+
+        geode_maximum = optional(fields, "Maximum Geode Version") or None
+
+        if geode_maximum and not VERSION_PATTERN.fullmatch(geode_maximum):
+            raise ValueError("Invalid maximum Geode version.")
 
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+
+    if catalog.get("schemaVersion") != 2:
+        raise ValueError("Catalog must use schema version 2.")
+
+    if runtime not in catalog.get("supportedRuntimes", []):
+        raise ValueError(
+            f"Catalog does not support runtime: {runtime}"
+        )
 
     if not isinstance(catalog.get("mods"), list):
         raise ValueError("Catalog mods must be a JSON array.")
@@ -109,14 +213,33 @@ def main():
         "name": name,
         "description": description,
         "creator": creator,
+        "maintainers": [issue_author],
         "version": version,
+        "packageType": package_type,
+        "runtime": runtime,
+        "compatibility": {
+            "game": "Geometry Dash",
+            "platforms": platforms,
+            "geode": {
+                "required": runtime == "geode",
+                "minimumVersion": geode_minimum,
+                "maximumVersion": geode_maximum
+            },
+            "fusion": {
+                "supported": runtime == "fusion"
+            }
+        },
+        "dependencies": dependencies,
+        "conflicts": conflicts,
         "icon": icon,
         "repository": repository,
-        "releaseUrl": "",
+        "releaseUrl": release_url,
         "downloadUrl": download_url,
         "sha256": sha256,
         "approved": True,
-        "registrationIssue": issue_url
+        "registrationIssue": issue_url,
+        "latestChangelog": "",
+        "updateHistory": []
     }
 
     catalog["mods"].append(mod)
@@ -128,6 +251,9 @@ def main():
 
     print(f"Registered mod: {name}")
     print(f"Mod ID: {mod_id}")
+    print(f"Runtime: {runtime}")
+    print(f"Package type: {package_type}")
+    print(f"Maintainer: {issue_author}")
     print(f"Registration issue: #{issue_number}")
 
 
