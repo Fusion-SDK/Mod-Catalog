@@ -1,0 +1,115 @@
+
+name: Validate Fusion Mod Update
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: fusion-mod-update-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: contains(github.event.issue.labels.*.name, 'mod-update')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Extract submission fields
+        id: fields
+        uses: actions/github-script@v7
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        with:
+          script: |
+            const body = process.env.ISSUE_BODY || "";
+
+            const fields = {
+              MOD_ID: "Mod ID",
+              CURRENT_VERSION: "Current Catalog Version",
+              NEW_VERSION: "Proposed New Version",
+              DOWNLOAD_URL: "Updated Package Download URL",
+              RELEASE_URL: "Upstream Release URL",
+              PACKAGE_TYPE: "Package Type",
+              SHA256: "SHA-256 Checksum"
+            };
+
+            for (const [key, heading] of Object.entries(fields)) {
+              const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const regex = new RegExp(
+                `### ${escaped}\\s*\\r?\\n+([\\s\\S]*?)(?=\\r?\\n### |$)`
+              );
+
+              const match = body.match(regex);
+              const value = match ? match[1].trim() : "";
+
+              core.setOutput(key, value);
+            }
+
+      - name: Run update validation
+        id: validation
+        env:
+          MOD_ID: ${{ steps.fields.outputs.MOD_ID }}
+          CURRENT_VERSION: ${{ steps.fields.outputs.CURRENT_VERSION }}
+          NEW_VERSION: ${{ steps.fields.outputs.NEW_VERSION }}
+          DOWNLOAD_URL: ${{ steps.fields.outputs.DOWNLOAD_URL }}
+          RELEASE_URL: ${{ steps.fields.outputs.RELEASE_URL }}
+          PACKAGE_TYPE: ${{ steps.fields.outputs.PACKAGE_TYPE }}
+          SHA256: ${{ steps.fields.outputs.SHA256 }}
+        run: |
+          set +e
+          python scripts/validate_mod_update.py > validation.txt 2>&1
+          result=$?
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          cat validation.txt
+          exit 0
+
+      - name: Post validation result
+        uses: actions/github-script@v7
+        env:
+          VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
+        with:
+          script: |
+            const fs = require("fs");
+            const report = fs.readFileSync("validation.txt", "utf8").trim();
+            const passed = process.env.VALIDATION_EXIT_CODE === "0";
+
+            const body = passed
+              ? [
+                  "## Fusion Mod Update — Validation Passed",
+                  "",
+                  "The automated checks passed.",
+                  "",
+                  "A Fusion maintainer must still review and approve this update.",
+                  "The catalog has **not** been changed."
+                ].join("\n")
+              : [
+                  "## Fusion Mod Update — Changes Required",
+                  "",
+                  "The automated checks found an issue:",
+                  "",
+                  "```text",
+                  report,
+                  "```",
+                  "",
+                  "Please edit this issue and correct the submission."
+                ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
