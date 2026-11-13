@@ -10,7 +10,7 @@ CATALOG = ROOT / "catalog" / "index.json"
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 VERSION_PATTERN = re.compile(
-    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|1[0-9]|[1-9]\d*)(?:[-+][0-9A-Za-z.-]+)?$"
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$"
 )
 SHA_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")
 
@@ -81,10 +81,18 @@ def parse_list(value):
 
 
 def parse_version(value, name):
-    if not VERSION_PATTERN.fullmatch(value):
-        raise ValueError(f"{name} must use MAJOR.MINOR.PATCH format.")
+    match = VERSION_PATTERN.fullmatch(value)
 
-    return tuple(int(part) for part in value.split("-", 1)[0].split("+", 1)[0].split("."))
+    if not match:
+        raise ValueError(
+            f"{name} must use MAJOR.MINOR.PATCH format."
+        )
+
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3))
+    )
 
 
 def validate_repository_url(value):
