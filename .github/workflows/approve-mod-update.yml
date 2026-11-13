@@ -103,9 +103,6 @@ jobs:
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"
           exit 0
           
-
-
-     
       - name: Extract update fields
         id: fields
         uses: actions/github-script@v7
@@ -148,6 +145,9 @@ jobs:
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
         run: python scripts/approve_mod_update.py
+
+      - name: Regenerate Catalog README
+        run: python scripts/generate_readme.py
 
       - name: Commit catalog changes
         run: |
