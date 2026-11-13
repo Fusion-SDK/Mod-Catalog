@@ -1,22 +1,11 @@
+
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "catalogName": "Fusion Mod Catalog",
-  "mods": [
-    {
-      "id": "example-mod",
-      "name": "Example Mod",
-      "description": "An example mod registered with Fusion.",
-      "creator": "Fusion SDK",
-      "maintainers": [
-        "GlitchyBoy-YT"
-      ],
-      "version": "1.0.0",
-      "icon": "mods/example-mod/icon.png",
-      "repository": "https://github.com/Fusion-Center/Fusion-Mod-Catalog",
-      "releaseUrl": "",
-      "downloadUrl": "",
-      "sha256": "",
-      "approved": false
-    }
-  ]
+  "catalogDescription": "The official catalog for Geometry Dash mods supported by Fusion.",
+  "supportedRuntimes": [
+    "fusion",
+    "geode"
+  ],
+  "mods": []
 }
