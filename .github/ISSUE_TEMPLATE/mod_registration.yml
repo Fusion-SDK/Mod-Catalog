@@ -51,7 +51,7 @@ body:
     validations:
       required: true
 
-   - type: dropdown
+  - type: dropdown
     id: package_type
     attributes:
       label: Package Type
