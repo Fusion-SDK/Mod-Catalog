@@ -57,6 +57,7 @@ jobs:
       - name: Remove exact catalog entry
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
+          CONFIRM_REMOVAL: YES
         run: python scripts/remove_mod.py
 
       - name: Commit catalog changes
