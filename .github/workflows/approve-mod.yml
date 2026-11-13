@@ -55,7 +55,7 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           printf '%s' "$ISSUE_BODY" | python scripts/review_submission.py
-
+          
       # 5. Handle failed scans.
       - name: Reject failed scan
         if: steps.scan.outputs.passed != 'true'
