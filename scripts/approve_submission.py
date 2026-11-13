@@ -10,7 +10,7 @@ CATALOG = ROOT / "catalog" / "index.json"
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 VERSION_PATTERN = re.compile(
-    r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$"
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|1[0-9]|[1-9]\d*)(?:[-+][0-9A-Za-z.-]+)?$"
 )
 SHA_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")
 
@@ -25,13 +25,8 @@ def parse_fields(body):
     for section in sections[1:]:
         lines = section.splitlines()
 
-        if not lines:
-            continue
-
-        heading = lines[0].strip()
-        value = "\n".join(lines[1:]).strip()
-
-        fields[heading] = value
+        if lines:
+            fields[lines[0].strip()] = "\n".join(lines[1:]).strip()
 
     return fields
 
@@ -57,7 +52,12 @@ def optional(fields, name):
 def validate_https_url(value, name, allowed_hosts=None):
     parsed = urlparse(value)
 
-    if parsed.scheme != "https" or not parsed.hostname:
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
         raise ValueError(f"{name} must be a valid HTTPS URL.")
 
     if allowed_hosts and parsed.hostname.lower() not in allowed_hosts:
@@ -78,6 +78,35 @@ def parse_list(value):
         for item in re.split(r"[,\n]", value)
         if item.strip()
     ]
+
+
+def parse_version(value, name):
+    if not VERSION_PATTERN.fullmatch(value):
+        raise ValueError(f"{name} must use MAJOR.MINOR.PATCH format.")
+
+    return tuple(int(part) for part in value.split("-", 1)[0].split("+", 1)[0].split("."))
+
+
+def validate_repository_url(value):
+    parsed = urlparse(value)
+    parts = parsed.path.strip("/").split("/")
+
+    if (
+        parsed.hostname != "github.com"
+        or len(parts) != 2
+        or not all(parts)
+        or parts[1].endswith(".git")
+    ):
+        raise ValueError(
+            "Source repository must point to a GitHub owner/repository."
+        )
+
+
+def validate_release_url(value):
+    parsed = urlparse(value)
+
+    if parsed.hostname != "github.com":
+        raise ValueError("Upstream release URL must point to github.com.")
 
 
 def main():
@@ -120,17 +149,26 @@ def main():
         {"github.com"}
     )
 
+    download_parsed = urlparse(download_url)
+
+    if "/releases/download/" not in download_parsed.path:
+        raise ValueError(
+            "Download URL must point to a GitHub Release asset."
+        )
+
     repository = validate_https_url(
         required(fields, "Source Repository"),
         "Source repository",
         {"github.com"}
     )
+    validate_repository_url(repository)
 
     release_url = validate_https_url(
         required(fields, "Upstream Release URL"),
         "Upstream release URL",
         {"github.com"}
     )
+    validate_release_url(release_url)
 
     icon = validate_https_url(
         required(fields, "Mod Icon URL"),
@@ -142,8 +180,7 @@ def main():
     if not ID_PATTERN.fullmatch(mod_id):
         raise ValueError("Mod ID contains invalid characters.")
 
-    if not VERSION_PATTERN.fullmatch(version):
-        raise ValueError("Version must use a valid three-part version.")
+    parse_version(version, "Mod Version")
 
     if not SHA_PATTERN.fullmatch(sha256):
         raise ValueError(
@@ -174,22 +211,52 @@ def main():
     dependencies = parse_list(optional(fields, "Dependencies"))
     conflicts = parse_list(optional(fields, "Conflicts"))
 
-    if mod_id in dependencies or mod_id in conflicts:
-        raise ValueError("A mod cannot depend on or conflict with itself.")
+    for label, identifiers in (
+        ("Dependencies", dependencies),
+        ("Conflicts", conflicts)
+    ):
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError(f"Duplicate {label.lower()} are not allowed.")
+
+        for identifier in identifiers:
+            if not ID_PATTERN.fullmatch(identifier):
+                raise ValueError(
+                    f"Invalid {label.lower()} mod ID: {identifier}"
+                )
+
+            if identifier == mod_id:
+                raise ValueError(
+                    "A mod cannot depend on or conflict with itself."
+                )
+
+    if set(dependencies) & set(conflicts):
+        raise ValueError(
+            "A mod cannot both depend on and conflict with the same mod."
+        )
 
     geode_minimum = None
     geode_maximum = None
 
     if runtime == "geode":
         geode_minimum = required(fields, "Minimum Geode Version")
-
-        if not VERSION_PATTERN.fullmatch(geode_minimum):
-            raise ValueError("Invalid minimum Geode version.")
+        minimum_tuple = parse_version(
+            geode_minimum,
+            "Minimum Geode Version"
+        )
 
         geode_maximum = optional(fields, "Maximum Geode Version") or None
 
-        if geode_maximum and not VERSION_PATTERN.fullmatch(geode_maximum):
-            raise ValueError("Invalid maximum Geode version.")
+        if geode_maximum:
+            maximum_tuple = parse_version(
+                geode_maximum,
+                "Maximum Geode Version"
+            )
+
+            if maximum_tuple < minimum_tuple:
+                raise ValueError(
+                    "Maximum Geode Version cannot be lower than "
+                    "Minimum Geode Version."
+                )
 
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
 
