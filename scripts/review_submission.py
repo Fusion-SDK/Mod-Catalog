@@ -21,6 +21,7 @@ ALLOWED_DOWNLOAD_HOSTS = {
     "objects.githubusercontent.com",
 }
 
+
 def parse_fields(body):
     fields = {}
     sections = re.split(r"(?m)^###\s+", body)
@@ -33,11 +34,12 @@ def parse_fields(body):
     return fields
 
 
-def get_field(fields, name):
-    value = fields.get(name, "").strip()
-    if not value or value == "_No response_":
-        return ""
-    return value
+def get_field(fields, *names):
+    for name in names:
+        value = fields.get(name, "").strip()
+        if value and value != "_No response_":
+            return value
+    return ""
 
 
 def valid_https_url(value):
@@ -56,6 +58,7 @@ def valid_https_url(value):
 class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parsed = urllib.parse.urlparse(newurl)
+
         if (
             parsed.scheme != "https"
             or parsed.hostname not in ALLOWED_DOWNLOAD_HOSTS
@@ -72,7 +75,7 @@ def download_package(url):
 
     if (
         not valid_https_url(url)
-        or parsed.hostname not in {"github.com"}
+        or parsed.hostname != "github.com"
         or "/releases/download/" not in parsed.path
     ):
         raise ValueError(
@@ -80,6 +83,7 @@ def download_package(url):
         )
 
     opener = urllib.request.build_opener(SafeRedirectHandler())
+
     request = urllib.request.Request(
         url,
         headers={"User-Agent": "Fusion-Submission-Guard/1.0"}
@@ -92,6 +96,7 @@ def download_package(url):
             raise ValueError("Package came from an untrusted host.")
 
         content_length = response.headers.get("Content-Length")
+
         if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
             raise ValueError("Package exceeds the 100 MB download limit.")
 
@@ -141,6 +146,7 @@ def inspect_archive(data):
 
                 if entry.file_size > 0:
                     ratio = entry.file_size / max(entry.compress_size, 1)
+
                     if ratio > MAX_COMPRESSION_RATIO:
                         raise ValueError(
                             f"Suspicious compression ratio: {entry.filename}"
@@ -159,7 +165,7 @@ def inspect_archive(data):
         )
 
 
-def main():
+def run_scan():
     body = sys.stdin.read()
     fields = parse_fields(body)
     problems = []
@@ -175,19 +181,21 @@ def main():
         "Mod Icon URL",
     ]
 
-    if not (
-    get_field(fields, "SHA-256")
-    or get_field(fields, "Package SHA-256")
-):
-    problems.append(
-        "**SHA-256:** This field is required."
-    )
-
     for field in required_fields:
         if not get_field(fields, field):
             problems.append(f"**{field}:** This field is required.")
 
+    sha = get_field(fields, "SHA-256", "Package SHA-256")
+
+    if not sha:
+        problems.append("**SHA-256:** This field is required.")
+    elif not re.fullmatch(r"[a-fA-F0-9]{64}", sha):
+        problems.append(
+            "**SHA-256:** Provide exactly 64 hexadecimal characters."
+        )
+
     mod_id = get_field(fields, "Mod ID")
+
     if mod_id and not re.fullmatch(
         r"[a-z0-9][a-z0-9._-]{0,127}", mod_id
     ):
@@ -197,6 +205,7 @@ def main():
         )
 
     version = get_field(fields, "Mod Version")
+
     if version and not re.fullmatch(
         r"v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version
     ):
@@ -204,27 +213,16 @@ def main():
             "**Mod Version:** Use a version such as `1.0.0` or `v1.0.0`."
         )
 
-    sha = (
-        get_field(fields, "SHA-256")
-        or get_field(fields, "Package SHA-256")
-    )
-    
-    if sha and not re.fullmatch(r"[a-fA-F0-9]{64}", sha):
-        problems.append(
-            "**SHA-256:** Provide exactly 64 hexadecimal characters."
-        )
-
     download_url = get_field(fields, "GitHub Release Download URL")
     source_url = get_field(fields, "Source Repository")
     icon_url = get_field(fields, "Mod Icon URL")
 
     if download_url and not valid_https_url(download_url):
-        problems.append(
-            "**Download URL:** Provide a valid HTTPS URL."
-        )
+        problems.append("**Download URL:** Provide a valid HTTPS URL.")
 
     if source_url:
         parsed = urllib.parse.urlparse(source_url)
+
         if (
             not valid_https_url(source_url)
             or parsed.hostname != "github.com"
@@ -235,9 +233,7 @@ def main():
             )
 
     if icon_url and not valid_https_url(icon_url):
-        problems.append(
-            "**Mod Icon URL:** Provide a valid HTTPS URL."
-        )
+        problems.append("**Mod Icon URL:** Provide a valid HTTPS URL.")
 
     permissions = get_field(fields, "Permissions")
 
@@ -249,11 +245,9 @@ def main():
 
     if "I have permission to distribute this downloadable package." not in permissions:
         problems.append(
-            "**Distribution permission:** Confirm that you have "
-            "permission to distribute the package."
+            "**Distribution permission:** Confirm permission to distribute."
         )
 
-    # Only download and inspect the package if its basic fields are valid.
     if not problems:
         try:
             package = download_package(download_url)
@@ -269,29 +263,42 @@ def main():
         except Exception as error:
             problems.append(f"**Package validation:** {error}")
 
-    passed = not problems
+    if problems:
+        return False, (
+            "## Fusion Submission Guard: Changes required\n\n"
+            + "\n".join(f"- {problem}" for problem in problems)
+        )
 
-    report = (
+    return True, (
         "## Fusion Submission Guard: Passed\n\n"
         "Automated checks passed. Manual review is still required."
-        if passed
-        else "## Fusion Submission Guard: Changes required\n\n"
-        + "\n".join(f"- {problem}" for problem in problems)
     )
 
-   output_path = os.environ.get("GITHUB_OUTPUT")
 
-if output_path:
-    with open(output_path, "a", encoding="utf-8") as output:
-        output.write(f"passed={'true' if passed else 'false'}\n")
-        output.write("report<<FUSION_REPORT\n")
-        output.write(report + "\n")
-        output.write("FUSION_REPORT\n")
+def main():
+    try:
+        passed, report = run_scan()
 
-print(report)
+    except Exception as error:
+        passed = False
+        report = (
+            "## Fusion Submission Guard: Scanner error\n\n"
+            f"The scanner encountered an unexpected error: `{error}`"
+        )
 
-if not passed:
-    sys.exit(1)
+    print(report, flush=True)
+
+    output_path = os.environ.get("GITHUB_OUTPUT")
+
+    if output_path:
+        with open(output_path, "a", encoding="utf-8") as output:
+            output.write(f"passed={'true' if passed else 'false'}\n")
+            output.write("report<<FUSION_REPORT\n")
+            output.write(report + "\n")
+            output.write("FUSION_REPORT\n")
+
+    if not passed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
