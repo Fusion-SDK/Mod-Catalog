@@ -1,0 +1,80 @@
+
+name: Mod Removal Request
+description: Request removal of a registered Fusion mod.
+title: "[Mod Removal Form]: "
+labels:
+  - removal-request
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Fusion Mod Removal Request
+
+        Use this form to request removal of a mod from the Fusion catalog.
+        All requests are checked against the registered catalog.
+
+  - type: input
+    id: mod_id
+    attributes:
+      label: Mod ID
+      description: Exact Mod ID from the catalog.
+      placeholder: example.mod
+    validations:
+      required: true
+
+  - type: input
+    id: mod_name
+    attributes:
+      label: Mod Name
+      description: Registered name of the mod.
+    validations:
+      required: true
+
+  - type: input
+    id: creator
+    attributes:
+      label: Mod Creator
+      description: Registered creator's GitHub username or name.
+    validations:
+      required: true
+
+  - type: input
+    id: requester
+    attributes:
+      label: Requester GitHub Username
+      description: Your GitHub username.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reason
+    attributes:
+      label: Removal Reason
+      options:
+        - Creator requested removal
+        - Mod discontinued
+        - Security vulnerability
+        - Copyright or ownership concern
+        - Incorrect or outdated catalog entry
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: explanation
+    attributes:
+      label: Additional Information
+      description: Explain why this mod should be removed.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I confirm that the information provided is accurate.
+          required: true
+        - label: I understand that removal requires Fusion staff authorization.
+          required: true
