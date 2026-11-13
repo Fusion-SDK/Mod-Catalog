@@ -38,7 +38,7 @@ jobs:
 
             const fields = {
               MOD_ID: "Mod ID",
-              DEVELOPER: "Developer Github Username",
+              DEVELOPER: "Developer GitHub Username",
               CURRENT_VERSION: "Current Catalog Version",
               NEW_VERSION: "Proposed New Version",
               DOWNLOAD_URL: "Updated Package Download URL",
@@ -55,21 +55,22 @@ jobs:
               );
 
               const match = body.match(regex);
-              const value = match ? match[1].trim() : "";
-
-              core.setOutput(key, value);
+              core.setOutput(key, match ? match[1].trim() : "");
             }
 
       - name: Run update validation
         id: validation
         env:
           MOD_ID: ${{ steps.fields.outputs.MOD_ID }}
+          DEVELOPER: ${{ steps.fields.outputs.DEVELOPER }}
           CURRENT_VERSION: ${{ steps.fields.outputs.CURRENT_VERSION }}
           NEW_VERSION: ${{ steps.fields.outputs.NEW_VERSION }}
           DOWNLOAD_URL: ${{ steps.fields.outputs.DOWNLOAD_URL }}
           RELEASE_URL: ${{ steps.fields.outputs.RELEASE_URL }}
           PACKAGE_TYPE: ${{ steps.fields.outputs.PACKAGE_TYPE }}
           SHA256: ${{ steps.fields.outputs.SHA256 }}
+          CHANGELOG: ${{ steps.fields.outputs.CHANGELOG }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
         run: |
           set +e
           python scripts/validate_mod_update.py > validation.txt 2>&1
