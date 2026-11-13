@@ -1,0 +1,118 @@
+
+name: Approve Fusion Mod Update
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: fusion-mod-update-approval
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    if: >-
+      github.event.label.name == 'approved-update' &&
+      github.event.issue.state == 'open' &&
+      contains(github.event.issue.labels.*.name, 'mod-update')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get approver GitHub permission
+        id: github-permission
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const result =
+              await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor
+              });
+
+            core.setOutput("permission", result.data.permission);
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Verify Fusion moderator role
+        env:
+          REQUIRED_ROLE: moderators
+          GITHUB_PERMISSION: ${{ steps.github-permission.outputs.permission }}
+        run: python scripts/check_permissions.py
+
+      - name: Revalidate update submission
+        id: validation
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set +e
+          python scripts/validate_mod_update.py > validation.txt 2>&1
+          result=$?
+          cat validation.txt
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Block invalid update
+        if: steps.validation.outputs.exit_code != '0'
+        run: |
+          echo "Update validation failed."
+          exit 1
+
+      - name: Apply approved update
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+        run: python scripts/approve_mod_update.py
+
+      - name: Commit catalog changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add catalog/index.json
+
+          if git diff --cached --quiet; then
+            echo "No catalog changes detected."
+            exit 1
+          fi
+
+          git commit -m "Update catalog mod from issue #${{ github.event.issue.number }}"
+          git push
+
+      - name: Close approved update
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.issue.number;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body: "## Fusion Mod Update — Approved\n\nThe update was validated and committed to the catalog."
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              state: "closed",
+              state_reason: "completed"
+            });
+
+            await github.rest.issues.lock({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              lock_reason: "resolved"
+            });
