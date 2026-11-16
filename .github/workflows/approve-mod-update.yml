@@ -61,7 +61,7 @@ jobs:
 
             const fields = {
               MOD_ID: "Mod ID",
-              DEVELOPER: "Developer Github Username",
+              DEVELOPER: "Developer GitHub Username",
               CURRENT_VERSION: "Current Catalog Version",
               NEW_VERSION: "Proposed New Version",
               DOWNLOAD_URL: "Updated Package Download URL",
