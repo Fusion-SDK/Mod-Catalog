@@ -61,14 +61,17 @@ jobs:
 
             const fields = {
               MOD_ID: "Mod ID",
-              DEVELOPER: "Developer GitHub Username",
+              DEVELOPER: "Developer Github Username",
               CURRENT_VERSION: "Current Catalog Version",
               NEW_VERSION: "Proposed New Version",
               DOWNLOAD_URL: "Updated Package Download URL",
               RELEASE_URL: "Upstream Release URL",
               PACKAGE_TYPE: "Package Type",
               SHA256: "SHA-256 Checksum",
-              CHANGELOG: "Changelog"
+              CHANGELOG: "Changelog",
+              FUSION_PACKAGE_INCLUDED: "Separate Fusion ZIP included?",
+              FUSION_DOWNLOAD_URL: "Updated Fusion ZIP Download URL",
+              FUSION_SHA256: "Fusion ZIP SHA-256 Checksum"
             };
 
             for (const [key, heading] of Object.entries(fields)) {
