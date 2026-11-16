@@ -12,8 +12,11 @@ body:
         Thanks for submitting your mod to Fusion!
 
         Submissions will be reviewed before being added to the catalog.
+        Make sure all information is accurate.
 
-        Make sure all information is accurate. Geode mods require the Geode loader.
+        Geode mods require the Geode loader.
+
+        A Geode mod can also support Fusion if it provides a separate Fusion-compatible ZIP package.
 
   - type: input
     id: mod_name
@@ -71,7 +74,7 @@ body:
     id: package_type
     attributes:
       label: Package Type
-      description: Select the downloadable package format.
+      description: Select the primary downloadable package format.
       options:
         - ZIP
         - GEODE
@@ -82,7 +85,7 @@ body:
     id: download
     attributes:
       label: GitHub Release Download URL
-      description: Direct link to the downloadable package file.
+      description: Direct link to the primary downloadable package file.
       placeholder: https://github.com/owner/repository/releases/download/v1.0.0/mod.zip
     validations:
       required: true
@@ -117,7 +120,7 @@ body:
     id: sha256
     attributes:
       label: Package SHA-256
-      description: The 64-character SHA-256 hash of the downloadable package.
+      description: The 64-character SHA-256 hash of the primary downloadable package.
       placeholder: Paste the package SHA-256 hash
     validations:
       required: true
@@ -149,7 +152,44 @@ body:
     validations:
       required: false
 
-  
+  - type: markdown
+    attributes:
+      value: |
+        ### Additional Fusion Compatibility
+
+        Complete the following fields only if your Geode mod also provides a separate Fusion-compatible ZIP package.
+
+        Do not submit a `.geode` file as a Fusion package.
+
+  - type: dropdown
+    id: fusion_supported
+    attributes:
+      label: Does this mod also support Fusion?
+      description: Select Yes only if you provide a separate Fusion-compatible ZIP package.
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+
+  - type: input
+    id: fusion_download
+    attributes:
+      label: Fusion Package Download URL
+      description: Required if you selected Yes. Direct link to the separate Fusion-compatible ZIP.
+      placeholder: https://github.com/owner/repository/releases/download/v1.0.0/mod-fusion.zip
+    validations:
+      required: false
+
+  - type: input
+    id: fusion_sha256
+    attributes:
+      label: Fusion Package SHA-256
+      description: Required if you selected Yes. The 64-character SHA-256 hash of the Fusion ZIP.
+      placeholder: Paste the Fusion package SHA-256 hash
+    validations:
+      required: false
+
   - type: textarea
     id: dependencies
     attributes:
