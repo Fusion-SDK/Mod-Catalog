@@ -360,6 +360,9 @@ def main():
     if fusion_package is not None:
         mod["fusionPackage"] = fusion_package
 
+    if runtime == "geode":
+        fusion_campatibility["supported"] = fusion_package is not None
+
     CATALOG.write_text(
         json.dumps(catalog, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8"
