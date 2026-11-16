@@ -3,14 +3,15 @@ import json
 import os
 import re
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "catalog" / "index.json"
 
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 VERSION_PATTERN = re.compile(
-    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$"
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$"
 )
 SHA_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")
 
@@ -50,23 +51,37 @@ def optional(fields, name):
 
 
 def validate_https_url(value, name, allowed_hosts=None):
+    try:
+        parsed = urlparse(value)
+
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+        ):
+            raise ValueError
+
+        if allowed_hosts and parsed.hostname.lower() not in allowed_hosts:
+            raise ValueError
+
+    except ValueError:
+        raise ValueError(f"{name} must be a valid HTTPS URL.")
+
+    return value
+
+
+def validate_release_asset_url(value, name, extension):
     parsed = urlparse(value)
 
     if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username
-        or parsed.password
+        parsed.hostname != "github.com"
+        or "/releases/download/" not in parsed.path
+        or not unquote(parsed.path).lower().endswith(extension)
     ):
-        raise ValueError(f"{name} must be a valid HTTPS URL.")
-
-    if allowed_hosts and parsed.hostname.lower() not in allowed_hosts:
         raise ValueError(
-            f"{name} must use one of these hosts: "
-            + ", ".join(sorted(allowed_hosts))
+            f"{name} must point to a GitHub Release {extension} asset."
         )
-
-    return value
 
 
 def parse_list(value):
@@ -117,6 +132,17 @@ def validate_release_url(value):
         raise ValueError("Upstream release URL must point to github.com.")
 
 
+def validate_sha256(value, name):
+    value = value.lower()
+
+    if not SHA_PATTERN.fullmatch(value):
+        raise ValueError(
+            f"{name} must contain exactly 64 hexadecimal characters."
+        )
+
+    return value
+
+
 def main():
     body = os.environ["ISSUE_BODY"]
     issue_number = os.environ["ISSUE_NUMBER"]
@@ -157,12 +183,11 @@ def main():
         {"github.com"}
     )
 
-    download_parsed = urlparse(download_url)
-
-    if "/releases/download/" not in download_parsed.path:
-        raise ValueError(
-            "Download URL must point to a GitHub Release asset."
-        )
+    validate_release_asset_url(
+        download_url,
+        "Download URL",
+        ".zip" if runtime == "fusion" else ".geode"
+    )
 
     repository = validate_https_url(
         required(fields, "Source Repository"),
@@ -183,17 +208,15 @@ def main():
         "Mod icon URL"
     )
 
-    sha256 = required(fields, "Package SHA-256").lower()
+    sha256 = validate_sha256(
+        required(fields, "Package SHA-256"),
+        "Package SHA-256"
+    )
 
     if not ID_PATTERN.fullmatch(mod_id):
         raise ValueError("Mod ID contains invalid characters.")
 
     parse_version(version, "Mod Version")
-
-    if not SHA_PATTERN.fullmatch(sha256):
-        raise ValueError(
-            "SHA-256 must contain exactly 64 hexadecimal characters."
-        )
 
     platforms = [
         platform.lower()
@@ -266,6 +289,78 @@ def main():
                     "Minimum Geode Version."
                 )
 
+    fusion_supported_answer = required(
+        fields,
+        "Does this mod also support Fusion?"
+    ).strip().lower()
+
+    if fusion_supported_answer not in {"yes", "no"}:
+        raise ValueError(
+            "Fusion compatibility must be answered Yes or No."
+        )
+
+    fusion_supported = fusion_supported_answer == "yes"
+    fusion_package = None
+
+    fusion_download = optional(fields, "Fusion Package Download URL")
+    fusion_sha = optional(fields, "Fusion Package SHA-256")
+
+    if runtime == "fusion":
+        if fusion_supported:
+            raise ValueError(
+                "Fusion-primary mods must select No for additional "
+                "Fusion compatibility."
+            )
+
+        if fusion_download or fusion_sha:
+            raise ValueError(
+                "Fusion-primary mods cannot submit an additional "
+                "Fusion package."
+            )
+
+    elif runtime == "geode":
+        if fusion_supported:
+            if not fusion_download:
+                raise ValueError(
+                    "Fusion Package Download URL is required when "
+                    "Fusion compatibility is Yes."
+                )
+
+            if not fusion_sha:
+                raise ValueError(
+                    "Fusion Package SHA-256 is required when "
+                    "Fusion compatibility is Yes."
+                )
+
+            fusion_download = validate_https_url(
+                fusion_download,
+                "Fusion Package Download URL",
+                {"github.com"}
+            )
+
+            validate_release_asset_url(
+                fusion_download,
+                "Fusion Package Download URL",
+                ".zip"
+            )
+
+            fusion_sha = validate_sha256(
+                fusion_sha,
+                "Fusion Package SHA-256"
+            )
+
+            fusion_package = {
+                "packageType": "ZIP",
+                "downloadUrl": fusion_download,
+                "sha256": fusion_sha
+            }
+
+        elif fusion_download or fusion_sha:
+            raise ValueError(
+                "Fusion package details must be blank when Fusion "
+                "compatibility is No."
+            )
+
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
 
     if catalog.get("schemaVersion") != 2:
@@ -301,7 +396,7 @@ def main():
                 "maximumVersion": geode_maximum
             },
             "fusion": {
-                "supported": runtime == "fusion"
+                "supported": runtime == "fusion" or fusion_supported
             }
         },
         "dependencies": dependencies,
@@ -317,6 +412,9 @@ def main():
         "updateHistory": []
     }
 
+    if fusion_package is not None:
+        mod["fusionPackage"] = fusion_package
+
     catalog["mods"].append(mod)
 
     CATALOG.write_text(
@@ -328,6 +426,11 @@ def main():
     print(f"Mod ID: {mod_id}")
     print(f"Runtime: {runtime}")
     print(f"Package type: {package_type}")
+    print(f"Fusion supported: {mod['compatibility']['fusion']['supported']}")
+
+    if fusion_package:
+        print("Separate Fusion ZIP package: registered")
+
     print(f"Maintainer: {issue_author}")
     print(f"Registration issue: #{issue_number}")
 
