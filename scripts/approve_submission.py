@@ -3,7 +3,7 @@ import json
 import os
 import re
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "catalog" / "index.json"
@@ -50,37 +50,53 @@ def optional(fields, name):
     return value
 
 
+def normalize_username(value):
+    return value.strip().casefold().lstrip("@")
+
+
 def validate_https_url(value, name, allowed_hosts=None):
     try:
         parsed = urlparse(value)
-
-        if (
-            parsed.scheme != "https"
-            or not parsed.hostname
-            or parsed.username
-            or parsed.password
-        ):
-            raise ValueError
-
-        if allowed_hosts and parsed.hostname.lower() not in allowed_hosts:
-            raise ValueError
-
+        hostname = parsed.hostname
+        parsed.port
     except ValueError:
         raise ValueError(f"{name} must be a valid HTTPS URL.")
+
+    if (
+        parsed.scheme.casefold() != "https"
+        or not hostname
+        or parsed.username
+        or parsed.password
+        or any(character.isspace() for character in value)
+    ):
+        raise ValueError(f"{name} must be a valid HTTPS URL.")
+
+    if allowed_hosts:
+        allowed = {host.casefold() for host in allowed_hosts}
+
+        if hostname.casefold() not in allowed:
+            raise ValueError(
+                f"{name} must use one of these hosts: "
+                + ", ".join(sorted(allowed))
+            )
 
     return value
 
 
 def validate_release_asset_url(value, name, extension):
+    validate_https_url(value, name, {"github.com"})
+
     parsed = urlparse(value)
+    path = unquote(parsed.path).casefold()
 
     if (
-        parsed.hostname != "github.com"
-        or "/releases/download/" not in parsed.path
-        or not unquote(parsed.path).lower().endswith(extension)
+        parsed.hostname.casefold() != "github.com"
+        or "/releases/download/" not in path
+        or not path.endswith(extension.casefold())
     ):
         raise ValueError(
-            f"{name} must point to a GitHub Release {extension} asset."
+            f"{name} must point to a GitHub Release "
+            f"{extension} asset."
         )
 
 
@@ -115,10 +131,12 @@ def validate_repository_url(value):
     parts = parsed.path.strip("/").split("/")
 
     if (
-        parsed.hostname != "github.com"
+        parsed.hostname.casefold() != "github.com"
         or len(parts) != 2
         or not all(parts)
         or parts[1].endswith(".git")
+        or parsed.query
+        or parsed.fragment
     ):
         raise ValueError(
             "Source repository must point to a GitHub owner/repository."
@@ -128,8 +146,10 @@ def validate_repository_url(value):
 def validate_release_url(value):
     parsed = urlparse(value)
 
-    if parsed.hostname != "github.com":
-        raise ValueError("Upstream release URL must point to github.com.")
+    if parsed.hostname.casefold() != "github.com":
+        raise ValueError(
+            "Upstream release URL must point to github.com."
+        )
 
 
 def validate_sha256(value, name):
@@ -143,11 +163,52 @@ def validate_sha256(value, name):
     return value
 
 
+def validate_catalog_structure(catalog):
+    if not isinstance(catalog, dict):
+        raise ValueError("Catalog root must be a JSON object.")
+
+    if catalog.get("schemaVersion") != 2:
+        raise ValueError("Catalog must use schema version 2.")
+
+    supported_runtimes = catalog.get("supportedRuntimes")
+
+    if (
+        not isinstance(supported_runtimes, list)
+        or not all(
+            isinstance(runtime, str)
+            for runtime in supported_runtimes
+        )
+    ):
+        raise ValueError(
+            "Catalog supportedRuntimes must be a list of strings."
+        )
+
+    mods = catalog.get("mods")
+
+    if not isinstance(mods, list):
+        raise ValueError("Catalog mods must be a JSON array.")
+
+    for index, existing in enumerate(mods):
+        if not isinstance(existing, dict):
+            raise ValueError(
+                f"Catalog mod at index {index} must be a JSON object."
+            )
+
+        existing_id = existing.get("id")
+
+        if not isinstance(existing_id, str) or not existing_id:
+            raise ValueError(
+                f"Catalog mod at index {index} has an invalid ID."
+            )
+
+
 def main():
     body = os.environ["ISSUE_BODY"]
     issue_number = os.environ["ISSUE_NUMBER"]
     issue_url = os.environ["ISSUE_URL"]
-    issue_author = os.environ["ISSUE_AUTHOR"].strip().lower()
+    issue_author = normalize_username(
+        os.environ["ISSUE_AUTHOR"]
+    )
 
     if not issue_author:
         raise ValueError("GitHub issue author is missing.")
@@ -226,7 +287,9 @@ def main():
     ]
 
     if not platforms:
-        raise ValueError("At least one supported platform is required.")
+        raise ValueError(
+            "At least one supported platform is required."
+        )
 
     if len(platforms) != len(set(platforms)):
         raise ValueError("Duplicate platforms are not allowed.")
@@ -247,7 +310,9 @@ def main():
         ("Conflicts", conflicts)
     ):
         if len(identifiers) != len(set(identifiers)):
-            raise ValueError(f"Duplicate {label.lower()} are not allowed.")
+            raise ValueError(
+                f"Duplicate {label.lower()} are not allowed."
+            )
 
         for identifier in identifiers:
             if not ID_PATTERN.fullmatch(identifier):
@@ -262,20 +327,26 @@ def main():
 
     if set(dependencies) & set(conflicts):
         raise ValueError(
-            "A mod cannot both depend on and conflict with the same mod."
+            "A mod cannot both depend on and conflict with "
+            "the same mod."
         )
 
     geode_minimum = None
     geode_maximum = None
 
     if runtime == "geode":
-        geode_minimum = required(fields, "Minimum Geode Version")
+        geode_minimum = required(
+            fields,
+            "Minimum Geode Version"
+        )
         minimum_tuple = parse_version(
             geode_minimum,
             "Minimum Geode Version"
         )
 
-        geode_maximum = optional(fields, "Maximum Geode Version") or None
+        geode_maximum = (
+            optional(fields, "Maximum Geode Version") or None
+        )
 
         if geode_maximum:
             maximum_tuple = parse_version(
@@ -292,7 +363,7 @@ def main():
     fusion_supported_answer = required(
         fields,
         "Does this mod also support Fusion?"
-    ).strip().lower()
+    ).strip().casefold()
 
     if fusion_supported_answer not in {"yes", "no"}:
         raise ValueError(
@@ -302,8 +373,14 @@ def main():
     fusion_supported = fusion_supported_answer == "yes"
     fusion_package = None
 
-    fusion_download = optional(fields, "Fusion Package Download URL")
-    fusion_sha = optional(fields, "Fusion Package SHA-256")
+    fusion_download = optional(
+        fields,
+        "Fusion Package Download URL"
+    )
+    fusion_sha = optional(
+        fields,
+        "Fusion Package SHA-256"
+    )
 
     if runtime == "fusion":
         if fusion_supported:
@@ -361,21 +438,24 @@ def main():
                 "compatibility is No."
             )
 
-    catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+    try:
+        catalog = json.loads(
+            CATALOG.read_text(encoding="utf-8")
+        )
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"Catalog contains invalid JSON: {error}"
+        ) from error
 
-    if catalog.get("schemaVersion") != 2:
-        raise ValueError("Catalog must use schema version 2.")
+    validate_catalog_structure(catalog)
 
-    if runtime not in catalog.get("supportedRuntimes", []):
+    if runtime not in catalog["supportedRuntimes"]:
         raise ValueError(
             f"Catalog does not support runtime: {runtime}"
         )
 
-    if not isinstance(catalog.get("mods"), list):
-        raise ValueError("Catalog mods must be a JSON array.")
-
     for existing in catalog["mods"]:
-        if existing.get("id", "").lower() == mod_id:
+        if existing["id"].casefold() == mod_id:
             raise ValueError(f"Mod ID already exists: {mod_id}")
 
     mod = {
@@ -396,7 +476,9 @@ def main():
                 "maximumVersion": geode_maximum
             },
             "fusion": {
-                "supported": runtime == "fusion" or fusion_supported
+                "supported": (
+                    runtime == "fusion" or fusion_supported
+                )
             }
         },
         "dependencies": dependencies,
@@ -417,16 +499,22 @@ def main():
 
     catalog["mods"].append(mod)
 
-    CATALOG.write_text(
+    temporary_catalog = CATALOG.with_suffix(".json.tmp")
+
+    temporary_catalog.write_text(
         json.dumps(catalog, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8"
     )
+    temporary_catalog.replace(CATALOG)
 
     print(f"Registered mod: {name}")
     print(f"Mod ID: {mod_id}")
     print(f"Runtime: {runtime}")
     print(f"Package type: {package_type}")
-    print(f"Fusion supported: {mod['compatibility']['fusion']['supported']}")
+    print(
+        "Fusion supported: "
+        f"{mod['compatibility']['fusion']['supported']}"
+    )
 
     if fusion_package:
         print("Separate Fusion ZIP package: registered")
