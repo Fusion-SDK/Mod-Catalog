@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CATALOG_PATH = ROOT / "catalog" / "index.json"
 
 SUPPORTED_RUNTIMES = {"fusion", "geode"}
+
 SUPPORTED_PLATFORMS = {
     "windows",
     "macos",
@@ -44,8 +45,16 @@ def require(condition, message):
 
 def validate_version(value, field_name):
     require(
-        isinstance(value, str) and VERSION_PATTERN.fullmatch(value),
+        isinstance(value, str)
+        and VERSION_PATTERN.fullmatch(value) is not None,
         f"{field_name} must use MAJOR.MINOR.PATCH version formatting."
+    )
+
+
+def version_core(value):
+    return tuple(
+        int(part)
+        for part in value.split("-", 1)[0].split("+", 1)[0].split(".")
     )
 
 
@@ -55,13 +64,20 @@ def validate_https_url(value, field_name):
         f"{field_name} is required."
     )
 
-    parsed = urlparse(value)
+    try:
+        parsed = urlparse(value)
+
+        valid = (
+            parsed.scheme == "https"
+            and bool(parsed.hostname)
+            and not parsed.username
+            and not parsed.password
+        )
+    except ValueError:
+        valid = False
 
     require(
-        parsed.scheme == "https"
-        and bool(parsed.hostname)
-        and not parsed.username
-        and not parsed.password,
+        valid,
         f"{field_name} must be a valid HTTPS URL."
     )
 
@@ -76,7 +92,8 @@ def validate_id_list(values, field_name, mod_id):
 
     for value in values:
         require(
-            isinstance(value, str) and ID_PATTERN.fullmatch(value),
+            isinstance(value, str)
+            and ID_PATTERN.fullmatch(value) is not None,
             f"Invalid ID in {field_name} for '{mod_id}': {value!r}"
         )
 
@@ -95,8 +112,36 @@ def validate_id_list(values, field_name, mod_id):
     return set(values)
 
 
+def validate_fusion_package(fusion_package, mod_id):
+    require(
+        isinstance(fusion_package, dict),
+        f"Geode mod '{mod_id}' declaring Fusion support must define fusionPackage."
+    )
+
+    require(
+        fusion_package.get("packageType") == "ZIP",
+        f"Fusion package for '{mod_id}' must use ZIP."
+    )
+
+    validate_https_url(
+        fusion_package.get("downloadUrl"),
+        f"Fusion package download URL for '{mod_id}'"
+    )
+
+    checksum = fusion_package.get("sha256")
+
+    require(
+        isinstance(checksum, str)
+        and SHA256_PATTERN.fullmatch(checksum) is not None,
+        f"Fusion package for '{mod_id}' must define a valid SHA-256 checksum."
+    )
+
+
 def validate_mod(mod, known_ids):
-    require(isinstance(mod, dict), "Every mod entry must be an object.")
+    require(
+        isinstance(mod, dict),
+        "Every mod entry must be an object."
+    )
 
     required_fields = [
         "id",
@@ -121,12 +166,16 @@ def validate_mod(mod, known_ids):
     ]
 
     for field in required_fields:
-        require(field in mod, f"Mod is missing required field '{field}'.")
+        require(
+            field in mod,
+            f"Mod is missing required field '{field}'."
+        )
 
     mod_id = mod["id"]
 
     require(
-        isinstance(mod_id, str) and ID_PATTERN.fullmatch(mod_id),
+        isinstance(mod_id, str)
+        and ID_PATTERN.fullmatch(mod_id) is not None,
         f"Invalid mod ID: {mod_id!r}"
     )
 
@@ -154,18 +203,22 @@ def validate_mod(mod, known_ids):
         f"Mod '{mod_id}' must have a valid maintainers list."
     )
 
-    validate_version(mod["version"], f"Version for '{mod_id}'")
+    validate_version(
+        mod["version"],
+        f"Version for '{mod_id}'"
+    )
 
     runtime = mod["runtime"]
     package_type = mod["packageType"]
 
     require(
-        runtime in SUPPORTED_RUNTIMES,
+        isinstance(runtime, str) and runtime in SUPPORTED_RUNTIMES,
         f"Mod '{mod_id}' has unsupported runtime '{runtime}'."
     )
 
     require(
-        package_type == PACKAGE_TYPES[runtime],
+        isinstance(package_type, str)
+        and package_type == PACKAGE_TYPES[runtime],
         f"Mod '{mod_id}' has an incompatible package type for runtime '{runtime}'."
     )
 
@@ -220,8 +273,6 @@ def validate_mod(mod, known_ids):
         f"Mod '{mod_id}' must define fusion.supported as a boolean."
     )
 
-    
-
     if runtime == "geode":
         require(
             geode["required"] is True,
@@ -242,15 +293,8 @@ def validate_mod(mod, known_ids):
                 f"Maximum Geode version for '{mod_id}'"
             )
 
-            min_core = tuple(
-                int(part) for part in minimum.split("-", 1)[0].split("+", 1)[0].split(".")
-            )
-            max_core = tuple(
-                int(part) for part in maximum.split("-", 1)[0].split("+", 1)[0].split(".")
-            )
-
             require(
-                min_core <= max_core,
+                version_core(minimum) <= version_core(maximum),
                 f"Mod '{mod_id}' has a maximum Geode version below its minimum."
             )
 
@@ -265,38 +309,18 @@ def validate_mod(mod, known_ids):
             f"Fusion mod '{mod_id}' must declare Fusion support."
         )
 
-    
     fusion_package = mod.get("fusionPackage")
 
     if runtime == "geode" and fusion["supported"]:
-        require(
-            isinstance(fusion_package, dict),
-            f"Geode mod '{mod_id}' declaring Fusion support must define fusionPackage."
-        )
-
-        require(
-            fusion_package.get("packageType") == "ZIP",
-            f"Fusion package for '{mod_id}' must use ZIP."
-        )
-
-        validate_https_url(
-            fusion_package.get("downloadUrl"),
-            f"Fusion package download URL for '{mod_id}'"
-        )
-
-        require(
-            isinstance(fusion_package.get("sha256"), str)
-            and SHA256_PATTERN.fullmatch(fusion_package["sha256"]) is not None,
-            f"Fusion package for '{mod_id}' must define a valid SHA-256 checksum."
+        validate_fusion_package(
+            fusion_package,
+            mod_id
         )
 
     elif fusion_package is not None:
-        require(
-            runtime == "geode" and fusion["supported"],
+        raise CatalogValidationError(
             f"Mod '{mod_id}' cannot define fusionPackage without Fusion support."
         )
-
-
 
     dependencies = validate_id_list(
         mod["dependencies"],
@@ -327,27 +351,45 @@ def validate_mod(mod, known_ids):
             f"Mod '{mod_id}' references unknown conflict '{conflict}'."
         )
 
-    validate_https_url(mod["icon"], f"Icon URL for '{mod_id}'")
-    validate_https_url(mod["repository"], f"Repository URL for '{mod_id}'")
-    validate_https_url(mod["releaseUrl"], f"Release URL for '{mod_id}'")
-    validate_https_url(mod["downloadUrl"], f"Download URL for '{mod_id}'")
+    validate_https_url(
+        mod["icon"],
+        f"Icon URL for '{mod_id}'"
+    )
+
+    validate_https_url(
+        mod["repository"],
+        f"Repository URL for '{mod_id}'"
+    )
+
+    validate_https_url(
+        mod["releaseUrl"],
+        f"Release URL for '{mod_id}'"
+    )
+
+    validate_https_url(
+        mod["downloadUrl"],
+        f"Download URL for '{mod_id}'"
+    )
 
     parsed_repository = urlparse(mod["repository"])
 
+    repository_path = parsed_repository.path.strip("/").split("/")
+
     require(
         parsed_repository.hostname == "github.com"
-        and len(parsed_repository.path.strip("/").split("/")) == 2,
+        and len(repository_path) == 2
+        and all(repository_path),
         f"Repository URL for '{mod_id}' must point to a GitHub owner/repository."
     )
 
     require(
-        parsed_repository.path.strip("/").endswith(".git") is False,
+        not repository_path[-1].endswith(".git"),
         f"Repository URL for '{mod_id}' must not end in .git."
     )
 
     require(
         isinstance(mod["sha256"], str)
-        and SHA256_PATTERN.fullmatch(mod["sha256"]),
+        and SHA256_PATTERN.fullmatch(mod["sha256"]) is not None,
         f"Mod '{mod_id}' must have a valid SHA-256 checksum."
     )
 
@@ -365,7 +407,6 @@ def validate_mod(mod, known_ids):
         isinstance(mod["updateHistory"], list),
         f"Mod '{mod_id}' must have an update history list."
     )
-
 
 
 def validate_dependency_cycles(mods):
@@ -428,6 +469,7 @@ def validate_dependency_compatibility(mods):
                         and dependency["compatibility"]["fusion"]["supported"] is True
                     )
                 )
+
             else:
                 compatible = dependency_runtime == "geode"
 
@@ -437,46 +479,26 @@ def validate_dependency_compatibility(mods):
                 f"because the dependency has no compatible {runtime} package."
             )
 
-    
-    def visit(mod_id):
-        if mod_id in active:
-            cycle_start = path.index(mod_id)
-            cycle = path[cycle_start:] + [mod_id]
-
-            raise CatalogValidationError(
-                "Circular dependency detected: "
-                + " -> ".join(cycle)
-            )
-
-        if mod_id in visited:
-            return
-
-        active.add(mod_id)
-        path.append(mod_id)
-
-        for dependency in dependency_map[mod_id]:
-            visit(dependency)
-
-        path.pop()
-        active.remove(mod_id)
-        visited.add(mod_id)
-
-    for mod_id in dependency_map:
-        visit(mod_id)
-
 
 def validate_catalog():
-    require(CATALOG_PATH.is_file(), f"Catalog not found: {CATALOG_PATH}")
+    require(
+        CATALOG_PATH.is_file(),
+        f"Catalog not found: {CATALOG_PATH}"
+    )
 
     try:
         with CATALOG_PATH.open("r", encoding="utf-8") as file:
             catalog = json.load(file)
+
     except json.JSONDecodeError as error:
         raise CatalogValidationError(
             f"Catalog JSON is invalid: {error}"
         )
 
-    require(isinstance(catalog, dict), "Catalog root must be an object.")
+    require(
+        isinstance(catalog, dict),
+        "Catalog root must be an object."
+    )
 
     require(
         catalog.get("schemaVersion") == 2,
@@ -501,12 +523,19 @@ def validate_catalog():
 
     mods = catalog.get("mods")
 
-    require(isinstance(mods, list), "Catalog mods must be a list.")
+    require(
+        isinstance(mods, list),
+        "Catalog mods must be a list."
+    )
 
     mod_ids = []
 
     for mod in mods:
-        require(isinstance(mod, dict), "Every mod entry must be an object.")
+        require(
+            isinstance(mod, dict),
+            "Every mod entry must be an object."
+        )
+
         mod_ids.append(mod.get("id"))
 
     require(
@@ -535,8 +564,12 @@ def validate_catalog():
 def main():
     try:
         validate_catalog()
+
     except CatalogValidationError as error:
-        print(f"CATALOG VALIDATION FAILED: {error}", file=sys.stderr)
+        print(
+            f"CATALOG VALIDATION FAILED: {error}",
+            file=sys.stderr
+        )
         sys.exit(1)
 
 
