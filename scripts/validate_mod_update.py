@@ -60,6 +60,15 @@ def main():
     except (OSError, json.JSONDecodeError):
         fail("Catalog or staff configuration is missing or invalid.")
 
+if not isinstance(catalog, dict):
+    fail("Catalog root must be a JSON object.")
+
+if not isinstance(staff, dict):
+    fail("Staff configuration root must be a JSON object.")
+
+if not isinstance(staff.get("roles"), dict):
+    fail("Staff role configuration is invalid.")
+    
     mod_id = os.getenv("MOD_ID", "").strip().lower()
     developer = os.getenv("DEVELOPER", "").strip().lstrip("@").lower()
     issue_author = os.getenv("ISSUE_AUTHOR", "").strip().lower()
@@ -108,8 +117,9 @@ def main():
         fail("The mod maintainer list is invalid.")
 
     maintainers = [
-        name.lower() for name in maintainers
-        if isinstance(name, str)
+        name.strip().casefold().lstrip("@")
+        for name in maintainers
+        if isinstance(name, str) and name.strip()
     ]
 
     roles = staff.get("roles", {})
@@ -123,8 +133,9 @@ def main():
         fail("Staff administrator configuration is invalid.")
 
     administrators = [
-        name.lower() for name in administrators
-        if isinstance(name, str)
+        name.strip().casefold().lstrip("@")
+        for name in administrators
+        if isinstance(name, str) and name.strip()
     ]
 
     if developer not in maintainers and developer not in administrators:
@@ -144,8 +155,15 @@ def main():
     ):
         fail("New version must be greater than the current version.")
 
-    if not valid_https(download_url):
-        fail("Download URL must use HTTPS.")
+     runtime = mod.get("runtime")
+
+    if runtime == "fusion":
+        if not valid_github_release_asset(download_url, ".zip"):
+            fail("Fusion download URL must point to a Github release ZIP asset.")
+
+    elif runtime == "geode":
+        if not valid_github_release_asset(download_url, ".geode"):
+            fail("Geode download URL must point to a Github release GEODE asset.")
 
     if not valid_https(release_url):
         fail("Release URL must use HTTPS.")
@@ -163,8 +181,6 @@ def main():
 
     if not changelog or changelog == "_No response_":
         fail("A changelog is required.")
-
-    runtime = mod.get("runtime")
 
     if runtime not in {"fusion", "geode"}:
         fail("Catalog entry has an unsupported runtime.")
