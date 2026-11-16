@@ -92,33 +92,64 @@ jobs:
         with:
           script: |
             const fs = require("fs");
-            const report = fs.readFileSync("validation.txt", "utf8").trim();
+            const report = fs.readFileSync("validation.txt", "uft8").trim();
             const passed = process.env.VALIDATION_EXIT_CODE === "0";
 
-            const body = passed
-              ? [
-                  "## Fusion Mod Update — Validation Passed",
-                  "",
-                  "The automated checks passed.",
-                  "",
-                  "A Fusion maintainer must still review and approve this update.",
-                  "The catalog has **not** been changed."
-                ].join("\n")
-              : [
-                  "## Fusion Mod Update — Changes Required",
-                  "",
-                  "The automated checks found an issue:",
-                  "",
-                  "```text",
-                  report,
-                  "```",
-                  "",
-                  "Please edit this issue and correct the submission."
-                ].join("\n");
+            const marker = "<!-- fusion-mod-update-validation -->";
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body
-            });
+            const body = [
+              marker,
+              passed
+                ? "## Fusion Mod Update - Validation Passed"
+                : "## Fusion Mod Update - Changes Required"
+              "",
+              passed
+                ? "The automated checks passed."
+                : "The automated checks found an issue:",
+              "",
+              ...(passed
+                ? [
+                    "A Fusion maintainer must still review and approve this update.",
+                    "The catalog has **not** been changed."
+                  ]
+                : [
+                    "```text",
+                    report || "No validation details were provided.",
+                    "```",
+                    "",
+                    "Please edit this issue and correct the submission."
+                  ])
+            ].join("\n");
+
+            const issue_number = context.issue.number;
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo
+                issue_number,
+                per_page: 100
+              }
+            );
+
+            const existing = comments.find(comment =>
+              comment.user.type === "Bot" &&
+              comment.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body
+              });
+            }
