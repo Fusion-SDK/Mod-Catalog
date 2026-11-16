@@ -18,12 +18,16 @@ def fail(message):
     sys.exit(1)
 
 
+def normalize_username(username):
+    return username.strip().casefold().lstrip("@") if isinstance(username, str) else ""
+
+
 def valid_https(url):
     try:
         parsed = urlparse(url)
         return (
             parsed.scheme == "https"
-            and bool(parsed.netloc)
+            and bool(parsed.hostname)
             and not parsed.username
             and not parsed.password
         )
@@ -41,7 +45,6 @@ def valid_github_release_asset(url, extension):
 
         return (
             parsed.hostname == "github.com"
-            and path.startswith("/")
             and "/releases/download/" in path
             and path.endswith(extension.lower())
         )
@@ -60,24 +63,28 @@ def main():
     except (OSError, json.JSONDecodeError):
         fail("Catalog or staff configuration is missing or invalid.")
 
-if not isinstance(catalog, dict):
-    fail("Catalog root must be a JSON object.")
+    if not isinstance(catalog, dict):
+        fail("Catalog root must be a JSON object.")
 
-if not isinstance(staff, dict):
-    fail("Staff configuration root must be a JSON object.")
+    if not isinstance(staff, dict):
+        fail("Staff configuration root must be a JSON object.")
 
-if not isinstance(staff.get("roles"), dict):
-    fail("Staff role configuration is invalid.")
-    
+    roles = staff.get("roles")
+
+    if not isinstance(roles, dict):
+        fail("Staff role configuration is invalid.")
+
     mod_id = os.getenv("MOD_ID", "").strip().lower()
-    developer = os.getenv("DEVELOPER", "").strip().lstrip("@").lower()
-    issue_author = os.getenv("ISSUE_AUTHOR", "").strip().lower()
+    developer = normalize_username(os.getenv("DEVELOPER", ""))
+    issue_author = normalize_username(os.getenv("ISSUE_AUTHOR", ""))
+
     current_version = os.getenv("CURRENT_VERSION", "").strip()
     new_version = os.getenv("NEW_VERSION", "").strip()
     download_url = os.getenv("DOWNLOAD_URL", "").strip()
     release_url = os.getenv("RELEASE_URL", "").strip()
     package_type = os.getenv("PACKAGE_TYPE", "").strip().upper()
     sha256 = os.getenv("SHA256", "").strip().lower()
+
     fusion_package_included = (
         os.getenv("FUSION_PACKAGE_INCLUDED", "").strip().lower()
     )
@@ -117,15 +124,10 @@ if not isinstance(staff.get("roles"), dict):
         fail("The mod maintainer list is invalid.")
 
     maintainers = [
-        name.strip().casefold().lstrip("@")
+        normalize_username(name)
         for name in maintainers
         if isinstance(name, str) and name.strip()
     ]
-
-    roles = staff.get("roles", {})
-
-    if not isinstance(roles, dict):
-        fail("Staff role configuration is invalid.")
 
     administrators = roles.get("administrators", [])
 
@@ -133,7 +135,7 @@ if not isinstance(staff.get("roles"), dict):
         fail("Staff administrator configuration is invalid.")
 
     administrators = [
-        name.strip().casefold().lstrip("@")
+        normalize_username(name)
         for name in administrators
         if isinstance(name, str) and name.strip()
     ]
@@ -155,21 +157,35 @@ if not isinstance(staff.get("roles"), dict):
     ):
         fail("New version must be greater than the current version.")
 
-     runtime = mod.get("runtime")
+    runtime = mod.get("runtime")
+
+    if runtime not in {"fusion", "geode"}:
+        fail("Catalog entry has an unsupported runtime.")
+
+    expected_package_type = {
+        "fusion": "ZIP",
+        "geode": "GEODE"
+    }[runtime]
+
+    if package_type != expected_package_type:
+        fail(
+            f"{runtime} mods must use {expected_package_type} packages."
+        )
 
     if runtime == "fusion":
         if not valid_github_release_asset(download_url, ".zip"):
-            fail("Fusion download URL must point to a Github release ZIP asset.")
+            fail(
+                "Fusion download URL must point to a GitHub release ZIP asset."
+            )
 
     elif runtime == "geode":
         if not valid_github_release_asset(download_url, ".geode"):
-            fail("Geode download URL must point to a Github release GEODE asset.")
+            fail(
+                "Geode download URL must point to a GitHub release GEODE asset."
+            )
 
     if not valid_https(release_url):
         fail("Release URL must use HTTPS.")
-
-    if package_type not in {"ZIP", "GEODE", "EXE"}:
-        fail("Unsupported package type.")
 
     existing_package_type = str(mod.get("packageType", "")).upper()
 
@@ -181,9 +197,6 @@ if not isinstance(staff.get("roles"), dict):
 
     if not changelog or changelog == "_No response_":
         fail("A changelog is required.")
-
-    if runtime not in {"fusion", "geode"}:
-        fail("Catalog entry has an unsupported runtime.")
 
     compatibility = mod.get("compatibility", {})
 
@@ -215,18 +228,16 @@ if not isinstance(staff.get("roles"), dict):
 
     if runtime == "fusion":
         if fusion_package_included == "yes":
-            fail("Fusion-native mods must select No for a separate Fusion ZIP.")
+            fail(
+                "Fusion-native mods must select No for a separate Fusion ZIP."
+            )
 
         if fusion_download_url or fusion_sha256:
-            fail("Fusion-native mods cannot submit a separate Fusion ZIP.")
-
-        if package_type != "ZIP":
-            fail("Fusion-native mods must use ZIP packages.")
+            fail(
+                "Fusion-native mods cannot submit a separate Fusion ZIP."
+            )
 
     elif runtime == "geode":
-        if package_type != "GEODE":
-            fail("Geode-primary mods must use GEODE packages.")
-
         if fusion_package_included == "yes":
             if not fusion_download_url:
                 fail("A Fusion ZIP download URL is required.")
