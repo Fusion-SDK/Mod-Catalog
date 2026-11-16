@@ -220,43 +220,39 @@ def validate_mod(mod, known_ids):
         f"Mod '{mod_id}' must define fusion.supported as a boolean."
     )
 
-    if runtime == "geode":
-        require(
-            geode["required"] is True,
-            f"Geode mod '{mod_id}' must require Geode."
-        )
-
-        require(
-            isinstance(fusion["supported"], bool),
-            f"Geode mod '{mod_id}' must declare Fusion support as a boolean."
-
-        minimum = geode.get("minimumVersion")
-        maximum = geode.get("maximumVersion")
-
-        validate_version(
-            minimum,
-            f"Minimum Geode version for '{mod_id}'"
-        )
-
-        if maximum is not None:
-            validate_version(
-                maximum,
-                f"Maximum Geode version for '{mod_id}'"
-            )
-
-            min_core = tuple(
-                int(part) for part in minimum.split("-", 1)[0].split("+", 1)[0].split(".")
-            )
-            max_core = tuple(
-                int(part) for part in maximum.split("-", 1)[0].split("+", 1)[0].split(".")
-            )
-
-            require(
-                min_core <= max_core,
-                f"Mod '{mod_id}' has a maximum Geode version below its minimum."
-            )
-
     
+if runtime == "geode":
+    require(
+        geode["required"] is True,
+        f"Geode mod '{mod_id}' must require Geode."
+    )
+
+    minimum = geode.get("minimumVersion")
+    maximum = geode.get("maximumVersion")
+
+    validate_version(
+        minimum,
+        f"Minimum Geode version for '{mod_id}'"
+    )
+
+    if maximum is not None:
+        validate_version(
+            maximum,
+            f"Maximum Geode version for '{mod_id}'"
+        )
+
+        min_core = tuple(
+            int(part) for part in minimum.split("-", 1)[0].split("+", 1)[0].split(".")
+        )
+        max_core = tuple(
+            int(part) for part in maximum.split("-", 1)[0].split("+", 1)[0].split(".")
+        )
+
+        require(
+            min_core <= max_core,
+            f"Mod '{mod_id}' has a maximum Geode version below its minimum."
+        )
+
 else:
     require(
         geode["required"] is False,
