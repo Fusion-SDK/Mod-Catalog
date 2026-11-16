@@ -8,8 +8,9 @@ body:
     attributes:
       value: |
         ## Fusion Mod Update
-        Use this form to submit a new version of an already registered mod.
+        Use this form to submit a new version of an already registered Fusion catalog mod.
         Do not use this form to register a brand-new mod.
+        For Geode mods, provide a separate Fusion ZIP if the updated mod supports Fusion.
 
   - type: input
     id: mod_id
@@ -48,7 +49,7 @@ body:
     id: download_url
     attributes:
       label: Updated Package Download URL
-      description: Direct HTTPS link to the new package.
+      description: Direct HTTPS link to the new primary package.
       placeholder: https://example.com/releases/mod.zip
     validations:
       required: true
@@ -77,10 +78,39 @@ body:
     id: sha256
     attributes:
       label: SHA-256 Checksum
-      description: SHA-256 checksum of the updated package.
+      description: SHA-256 checksum of the updated primary package.
       placeholder: 64-character hexadecimal checksum
     validations:
       required: true
+
+  - type: dropdown
+    id: fusion_package_included
+    attributes:
+      label: Separate Fusion ZIP included?
+      description: For Geode mods, select Yes if this update includes a separate Fusion-compatible ZIP. For Fusion-native mods, select No.
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+
+  - type: input
+    id: fusion_download_url
+    attributes:
+      label: Updated Fusion ZIP Download URL
+      description: Required when the separate Fusion ZIP option is Yes. Must point to a GitHub release ZIP asset.
+      placeholder: https://github.com/username/project/releases/download/v1.1.0/mod-fusion.zip
+    validations:
+      required: false
+
+  - type: input
+    id: fusion_sha256
+    attributes:
+      label: Fusion ZIP SHA-256 Checksum
+      description: Required when the separate Fusion ZIP option is Yes.
+      placeholder: 64-character hexadecimal checksum
+    validations:
+      required: false
 
   - type: textarea
     id: changelog
