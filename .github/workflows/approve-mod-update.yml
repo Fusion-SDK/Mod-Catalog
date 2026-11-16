@@ -97,6 +97,9 @@ jobs:
           SHA256: ${{ steps.fields.outputs.SHA256 }}
           CHANGELOG: ${{ steps.fields.outputs.CHANGELOG }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          FUSION_PACKAGE_INCLUDED: ${{ steps.fields.outputs.FUSION_PACKAGE_INCLUDED }}
+          FUSION_DOWNLOAD_URL: ${{ steps.fields.outputs.FUSION_DOWNLOAD_URL }}
+          FUSION_SHA256: ${{ steps.fields.outputs.FUSION_SHA256 }}
         run: python scripts/validate_mod_update.py
 
       - name: Apply approved update
