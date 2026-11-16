@@ -227,9 +227,8 @@ def validate_mod(mod, known_ids):
         )
 
         require(
-            fusion["supported"] is False,
-            f"Geode mod '{mod_id}' cannot claim native Fusion support."
-        )
+            isinstance(fusion["supported"], bool),
+            f"Geode mod '{mod_id}' must declare Fusion support as a boolean."
 
         minimum = geode.get("minimumVersion")
         maximum = geode.get("maximumVersion")
@@ -257,16 +256,48 @@ def validate_mod(mod, known_ids):
                 f"Mod '{mod_id}' has a maximum Geode version below its minimum."
             )
 
-    else:
-        require(
-            geode["required"] is False,
-            f"Fusion mod '{mod_id}' cannot require Geode."
-        )
+    
+else:
+    require(
+        geode["required"] is False,
+        f"Fusion mod '{mod_id}' cannot require Geode."
+    )
 
-        require(
-            fusion["supported"] is True,
-            f"Fusion mod '{mod_id}' must declare Fusion support."
-        )
+    require(
+        fusion["supported"] is True,
+        f"Fusion mod '{mod_id}' must declare Fusion support."
+    )
+
+fusion_package = mod.get("fusionPackage")
+
+if runtime == "geode" and fusion["supported"]:
+    require(
+        isinstance(fusion_package, dict),
+        f"Geode mod '{mod_id}' claiming Fusion support must provide a fusionPackage."
+    )
+
+    require(
+        fusion_package.get("packageType") == "ZIP",
+        f"Fusion package for '{mod_id}' must use ZIP format."
+    )
+
+    validate_https_url(
+        fusion_package.get("downloadUrl"),
+        f"Fusion package download URL for '{mod_id}'"
+    )
+
+    require(
+        isinstance(fusion_package.get("sha256"), str)
+        and SHA256_PATTERN.fullmatch(fusion_package["sha256"]),
+        f"Fusion package for '{mod_id}' must have a valid SHA-256 checksum."
+    )
+
+elif fusion_package is not None:
+    require(
+        runtime == "geode" and fusion["supported"],
+        f"Mod '{mod_id}' cannot provide a Fusion package without declaring Fusion support."
+    )
+
 
     dependencies = validate_id_list(
         mod["dependencies"],
@@ -346,6 +377,41 @@ def validate_dependency_cycles(mods):
     visited = set()
     active = set()
     path = []
+
+    
+def validate_dependency_compatibility(mods):
+    mod_lookup = {
+        mod["id"]: mod
+        for mod in mods
+    }
+
+    for mod in mods:
+        mod_id = mod["id"]
+        runtime = mod["runtime"]
+
+        for dependency_id in mod["dependencies"]:
+            dependency = mod_lookup[dependency_id]
+            dependency_runtime = dependency["runtime"]
+
+            if runtime == "fusion":
+                compatible = (
+                    dependency_runtime == "fusion"
+                    or (
+                        dependency_runtime == "geode"
+                        and dependency.get("fusionPackage") is not None
+                        and dependency["compatibility"]["fusion"]["supported"] is True
+                    )
+                )
+
+            else:
+                compatible = dependency_runtime == "geode"
+
+            require(
+                compatible,
+                f"Mod '{mod_id}' cannot depend on '{dependency_id}' "
+                f"because the dependency has no compatible {runtime} package."
+            )
+
 
     def visit(mod_id):
         if mod_id in active:
@@ -434,6 +500,7 @@ def validate_catalog():
         validate_mod(mod, known_ids)
 
     validate_dependency_cycles(mods)
+    validate_dependency_compatibility(mods)
 
     print(
         f"Catalog validation passed: {len(mods)} mod(s) checked."
