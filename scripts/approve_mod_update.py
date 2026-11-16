@@ -36,6 +36,10 @@ def required(fields, name):
     return value
 
 
+def normalize_username(username):
+    return username.strip().casefold().lstrip("@") if isinstance(username, str) else ""
+
+
 def validate_url(value, name):
     try:
         parsed = urlparse(value)
@@ -98,13 +102,12 @@ def main():
     fields = parse_fields(body)
 
     mod_id = required(fields, "Mod ID").lower()
-    developer = (
+    developer = normalize_username(
         required(fields, "Developer GitHub Username")
-        .strip()
-        .lstrip("@")
-        .lower()
     )
-    issue_author = os.environ.get("ISSUE_AUTHOR", "").strip().lower()
+    issue_author = normalize_username(
+        os.environ.get("ISSUE_AUTHOR", "")
+    )
 
     if not developer or developer != issue_author:
         raise ValueError(
@@ -163,6 +166,10 @@ def main():
         )
 
     catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
+
+    if not isinstance(catalog, dict):
+        raise ValueError("Catalog root must be a JSON object.")
+
     mods = catalog.get("mods")
 
     if not isinstance(mods, list):
@@ -188,7 +195,7 @@ def main():
         raise ValueError("Mod maintainer list must be a JSON array.")
 
     maintainers = [
-        username.lower()
+        normalize_username(username)
         for username in maintainers
         if isinstance(username, str)
     ]
@@ -196,15 +203,21 @@ def main():
     staff_path = ROOT / "config" / "staff.json"
     staff = json.loads(staff_path.read_text(encoding="utf-8"))
 
-    administrators = staff.get("roles", {}).get(
-        "administrators", []
-    )
+    if not isinstance(staff, dict):
+        raise ValueError("Staff configuration must be a JSON object.")
+
+    roles = staff.get("roles", {})
+
+    if not isinstance(roles, dict):
+        raise ValueError("Staff roles configuration is invalid.")
+
+    administrators = roles.get("administrators", [])
 
     if not isinstance(administrators, list):
         raise ValueError("Staff administrator list is invalid.")
 
     administrators = [
-        username.lower()
+        normalize_username(username)
         for username in administrators
         if isinstance(username, str)
     ]
@@ -236,6 +249,19 @@ def main():
     if package_type != expected_package_type:
         raise ValueError(
             f"{runtime} mods must use {expected_package_type} packages."
+        )
+
+    if runtime == "fusion":
+        validate_github_release_asset(
+            download_url,
+            ".zip",
+            "Download URL"
+        )
+    elif runtime == "geode":
+        validate_github_release_asset(
+            download_url,
+            ".geode",
+            "Download URL"
         )
 
     compatibility = mod.get("compatibility", {})
@@ -361,7 +387,7 @@ def main():
         mod["fusionPackage"] = fusion_package
 
     if runtime == "geode":
-        fusion_campatibility["supported"] = fusion_package is not None
+        fusion_compatibility["supported"] = fusion_package is not None
 
     CATALOG.write_text(
         json.dumps(catalog, indent=2, ensure_ascii=False) + "\n",
