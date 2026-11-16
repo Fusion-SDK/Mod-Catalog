@@ -367,6 +367,7 @@ def validate_mod(mod, known_ids):
     )
 
 
+
 def validate_dependency_cycles(mods):
     dependency_map = {
         mod["id"]: set(mod["dependencies"])
@@ -377,7 +378,33 @@ def validate_dependency_cycles(mods):
     active = set()
     path = []
 
-    
+    def visit(mod_id):
+        if mod_id in active:
+            cycle_start = path.index(mod_id)
+            cycle = path[cycle_start:] + [mod_id]
+
+            raise CatalogValidationError(
+                "Circular dependency detected: "
+                + " -> ".join(cycle)
+            )
+
+        if mod_id in visited:
+            return
+
+        active.add(mod_id)
+        path.append(mod_id)
+
+        for dependency in dependency_map[mod_id]:
+            visit(dependency)
+
+        path.pop()
+        active.remove(mod_id)
+        visited.add(mod_id)
+
+    for mod_id in dependency_map:
+        visit(mod_id)
+
+
 def validate_dependency_compatibility(mods):
     mod_lookup = {
         mod["id"]: mod
@@ -401,7 +428,6 @@ def validate_dependency_compatibility(mods):
                         and dependency["compatibility"]["fusion"]["supported"] is True
                     )
                 )
-
             else:
                 compatible = dependency_runtime == "geode"
 
@@ -411,7 +437,7 @@ def validate_dependency_compatibility(mods):
                 f"because the dependency has no compatible {runtime} package."
             )
 
-
+    
     def visit(mod_id):
         if mod_id in active:
             cycle_start = path.index(mod_id)
