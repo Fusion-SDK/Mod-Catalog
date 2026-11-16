@@ -45,6 +45,9 @@ jobs:
               RELEASE_URL: "Upstream Release URL",
               PACKAGE_TYPE: "Package Type",
               SHA256: "SHA-256 Checksum",
+              FUSION_PACKAGE_INCLUDED: "Separate Fusion ZIP included?",
+              FUSION_DOWNLOAD_URL: "Updated Fusion ZIP Download URL",
+              FUSION_SHA256: "Fusion ZIP SHA-256 Checksum",
               CHANGELOG: "Changelog"
             };
 
@@ -69,6 +72,9 @@ jobs:
           RELEASE_URL: ${{ steps.fields.outputs.RELEASE_URL }}
           PACKAGE_TYPE: ${{ steps.fields.outputs.PACKAGE_TYPE }}
           SHA256: ${{ steps.fields.outputs.SHA256 }}
+          FUSION_PACKAGE_INCLUDED: ${{ steps.fields.outputs.FUSION_PACKAGE_INCLUDED }}
+          FUSION_DOWNLOAD_URL: ${{ steps.fields.outputs.FUSION_DOWNLOAD_URL }}
+          FUSION_SHA256: ${{ steps.fields.outputs.FUSION_SHA256 }}
           CHANGELOG: ${{ steps.fields.outputs.CHANGELOG }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
         run: |
