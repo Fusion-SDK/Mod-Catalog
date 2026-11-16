@@ -46,6 +46,7 @@ jobs:
 
       - name: Verify Fusion moderator role
         env:
+          GITHUB_ACTOR: ${{ github.actor }}
           REQUIRED_ROLE: moderators
           GITHUB_PERMISSION: ${{ steps.github-permission.outputs.permission }}
         run: python scripts/check_permissions.py
