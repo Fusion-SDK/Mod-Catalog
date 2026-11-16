@@ -372,7 +372,6 @@ def validate_mod(mod, known_ids):
     )
 
     parsed_repository = urlparse(mod["repository"])
-
     repository_path = parsed_repository.path.strip("/").split("/")
 
     require(
@@ -394,8 +393,8 @@ def validate_mod(mod, known_ids):
     )
 
     require(
-        isinstance(mod["approved"], bool),
-        f"Mod '{mod_id}' must have a boolean approved field."
+        mod["approved"] is True,
+        f"Mod '{mod_id}' must be approved before entering the catalog."
     )
 
     require(
