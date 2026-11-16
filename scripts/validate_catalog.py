@@ -265,35 +265,37 @@ def validate_mod(mod, known_ids):
             f"Fusion mod '{mod_id}' must declare Fusion support."
         )
 
+    
     fusion_package = mod.get("fusionPackage")
 
     if runtime == "geode" and fusion["supported"]:
         require(
-        isinstance(fusion_package, dict),
-        f"Geode mod '{mod_id}' claiming Fusion support must provide a fusionPackage."
-    )
+            isinstance(fusion_package, dict),
+            f"Geode mod '{mod_id}' declaring Fusion support must define fusionPackage."
+        )
 
-    require(
-        fusion_package.get("packageType") == "ZIP",
-        f"Fusion package for '{mod_id}' must use ZIP format."
-    )
+        require(
+            fusion_package.get("packageType") == "ZIP",
+            f"Fusion package for '{mod_id}' must use ZIP."
+        )
 
-    validate_https_url(
-        fusion_package.get("downloadUrl"),
-        f"Fusion package download URL for '{mod_id}'"
-    )
+        validate_https_url(
+            fusion_package.get("downloadUrl"),
+            f"Fusion package download URL for '{mod_id}'"
+        )
 
-    require(
-        isinstance(fusion_package.get("sha256"), str)
-        and SHA256_PATTERN.fullmatch(fusion_package["sha256"]),
-        f"Fusion package for '{mod_id}' must have a valid SHA-256 checksum."
-    )
+        require(
+            isinstance(fusion_package.get("sha256"), str)
+            and SHA256_PATTERN.fullmatch(fusion_package["sha256"]) is not None,
+            f"Fusion package for '{mod_id}' must define a valid SHA-256 checksum."
+        )
 
-elif fusion_package is not None:
-    require(
-        runtime == "geode" and fusion["supported"],
-        f"Mod '{mod_id}' cannot provide a Fusion package without declaring Fusion support."
-    )
+    elif fusion_package is not None:
+        require(
+            runtime == "geode" and fusion["supported"],
+            f"Mod '{mod_id}' cannot define fusionPackage without Fusion support."
+        )
+
 
 
     dependencies = validate_id_list(
