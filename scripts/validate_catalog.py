@@ -221,53 +221,54 @@ def validate_mod(mod, known_ids):
     )
 
     
-if runtime == "geode":
-    require(
-        geode["required"] is True,
-        f"Geode mod '{mod_id}' must require Geode."
-    )
 
-    minimum = geode.get("minimumVersion")
-    maximum = geode.get("maximumVersion")
+    if runtime == "geode":
+        require(
+            geode["required"] is True,
+            f"Geode mod '{mod_id}' must require Geode."
+        )
 
-    validate_version(
-        minimum,
-        f"Minimum Geode version for '{mod_id}'"
-    )
+        minimum = geode.get("minimumVersion")
+        maximum = geode.get("maximumVersion")
 
-    if maximum is not None:
         validate_version(
-            maximum,
-            f"Maximum Geode version for '{mod_id}'"
+            minimum,
+            f"Minimum Geode version for '{mod_id}'"
         )
 
-        min_core = tuple(
-            int(part) for part in minimum.split("-", 1)[0].split("+", 1)[0].split(".")
-        )
-        max_core = tuple(
-            int(part) for part in maximum.split("-", 1)[0].split("+", 1)[0].split(".")
+        if maximum is not None:
+            validate_version(
+                maximum,
+                f"Maximum Geode version for '{mod_id}'"
+            )
+
+            min_core = tuple(
+                int(part) for part in minimum.split("-", 1)[0].split("+", 1)[0].split(".")
+            )
+            max_core = tuple(
+                int(part) for part in maximum.split("-", 1)[0].split("+", 1)[0].split(".")
+            )
+
+            require(
+                min_core <= max_core,
+                f"Mod '{mod_id}' has a maximum Geode version below its minimum."
+            )
+
+    else:
+        require(
+            geode["required"] is False,
+            f"Fusion mod '{mod_id}' cannot require Geode."
         )
 
         require(
-            min_core <= max_core,
-            f"Mod '{mod_id}' has a maximum Geode version below its minimum."
+            fusion["supported"] is True,
+            f"Fusion mod '{mod_id}' must declare Fusion support."
         )
 
-else:
-    require(
-        geode["required"] is False,
-        f"Fusion mod '{mod_id}' cannot require Geode."
-    )
+    fusion_package = mod.get("fusionPackage")
 
-    require(
-        fusion["supported"] is True,
-        f"Fusion mod '{mod_id}' must declare Fusion support."
-    )
-
-fusion_package = mod.get("fusionPackage")
-
-if runtime == "geode" and fusion["supported"]:
-    require(
+    if runtime == "geode" and fusion["supported"]:
+        require(
         isinstance(fusion_package, dict),
         f"Geode mod '{mod_id}' claiming Fusion support must provide a fusionPackage."
     )
