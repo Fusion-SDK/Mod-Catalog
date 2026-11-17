@@ -119,7 +119,7 @@ def validate_version(value, field_name):
         )
 
 
-def validate_github_repository_url(value, field_name):
+def validate_github_repository_url(value, field_name, allow_subpaths=False):
     if not valid_https_url(value):
         raise SubmissionError(f"{field_name} must be a valid HTTPS URL.")
 
@@ -135,13 +135,18 @@ def validate_github_repository_url(value, field_name):
 
     parts = [part for part in parsed.path.split("/") if part]
 
-    if len(parts) < 2:
+    if len(parts) < 2 or (not allow_subpaths and len(parts) != 2):
         raise SubmissionError(
-            f"{field_name} must point to a GitHub repository."
+            f"{field_name} must point to a GitHub owner/repository."
         )
 
     if any(part in {".", ".."} for part in parts):
         raise SubmissionError(f"{field_name} contains an invalid path.")
+
+    if parts[1].lower().endswith(".git"):
+        raise SubmissionError(
+            f"{field_name} must not use a .git repository suffix."
+        )
 
 
 def validate_release_asset_url(value, expected_extension, field_name):
@@ -519,7 +524,11 @@ def validate_submission(fields):
         )
 
     validate_github_repository_url(source, "Source Repository")
-    validate_github_repository_url(release, "Upstream Release URL")
+    validate_github_repository_url(
+        release,
+        "Upstream Release URL",
+        allow_subpaths=True
+    )
 
     if not valid_https_url(icon):
         raise SubmissionError("Mod Icon URL must be a valid HTTPS URL.")
@@ -622,18 +631,27 @@ def validate_submission(fields):
             "A mod cannot both depend on and conflict with the same mod."
         )
 
-    permission_text = "\n".join(fields.values()).lower()
+    permission_field = fields.get("Permissions", "")
+    checked_permissions = {
+        match.group(1).strip().casefold()
+        for match in re.finditer(
+            r"(?im)^\s*-\s*\[x\]\s*(.+?)\s*$",
+            permission_field
+        )
+    }
 
-    required_permissions = (
+    required_permissions = {
         "i own this mod or have permission to submit it.",
         "i have permission to distribute this downloadable package.",
-    )
+    }
 
-    for permission in required_permissions:
-        if permission not in permission_text:
-            raise SubmissionError(
-                "Both permission confirmations must be checked."
-            )
+    missing_permissions = required_permissions - checked_permissions
+
+    if missing_permissions:
+        raise SubmissionError(
+            "Both permission confirmations must be checked. Missing: "
+            + "; ".join(sorted(missing_permissions))
+        )
 
     catalog = load_catalog()
     existing_mods = catalog["mods"]
