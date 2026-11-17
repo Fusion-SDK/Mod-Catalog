@@ -18,6 +18,10 @@ def main():
     action = os.environ["STAFF_ACTION"].strip()
     username = os.environ["STAFF_USERNAME"].strip()
     role = os.environ["STAFF_ROLE"].strip().lower()
+    reason = os.environ.get("STAFF_REASON", "").strip()
+
+    if not reason:
+        raise ValueError("A reason is required for staff changes.")
 
     if not re.fullmatch(r"[A-Za-z0-9-]{1,39}", username):
         raise ValueError("Invalid GitHub username.")
@@ -26,7 +30,18 @@ def main():
         raise ValueError("Invalid staff role.")
 
     data = json.loads(STAFF_FILE.read_text(encoding="utf-8"))
-    roles = data["roles"]
+
+    if not isinstance(data, dict) or data.get("schemaVersion") != 1:
+        raise ValueError("Unsupported or invalid staff configuration.")
+
+    roles = data.get("roles")
+
+    if not isinstance(roles, dict):
+        raise ValueError("Staff roles configuration is invalid.")
+
+    for role_name in ("administrators", "moderators", "reviewers"):
+        if not isinstance(roles.get(role_name), list):
+            raise ValueError(f"Staff role '{role_name}' must be a list.")
 
     if action == "Add staff member":
         for members in roles.values():
@@ -59,10 +74,13 @@ def main():
     if not roles["administrators"]:
         raise ValueError("Cannot remove the last administrator.")
 
-    STAFF_FILE.write_text(
+    temporary = STAFF_FILE.with_suffix(".json.tmp")
+
+    temporary.write_text(
         json.dumps(data, indent=2) + "\n",
         encoding="utf-8"
     )
+    temporary.replace(STAFF_FILE)
 
     print(f"Successfully updated staff roles for {username}.")
 
