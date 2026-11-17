@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from review_submission import validate_package
+
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "catalog" / "index.json"
 
@@ -343,6 +345,26 @@ def main():
                     "Fusion ZIP is required to preserve that support."
                 )
 
+    try:
+        validate_package(
+            download_url,
+            sha256,
+            package_type,
+            expected_id=mod_id if runtime == "geode" else None,
+            expected_version=new_version if runtime == "geode" else None,
+        )
+
+        if fusion_package is not None:
+            validate_package(
+                fusion_package["downloadUrl"],
+                fusion_package["sha256"],
+                "ZIP",
+            )
+    except Exception as error:
+        raise ValueError(
+            f"Updated package failed download, checksum, or archive validation: {error}"
+        ) from error
+
     previous_version = mod["version"]
 
     history = mod.setdefault("updateHistory", [])
@@ -365,7 +387,7 @@ def main():
         "releaseUrl": mod.get("releaseUrl", ""),
         "sha256": mod.get("sha256", ""),
         "packageType": mod.get("packageType", ""),
-        "changelog": changelog,
+        "changelog": mod.get("latestChangelog", ""),
         "approvedUpdateIssue": mod.get("lastUpdateIssue", "")
     }
 
@@ -389,10 +411,12 @@ def main():
     if runtime == "geode":
         fusion_compatibility["supported"] = fusion_package is not None
 
-    CATALOG.write_text(
+    temporary_catalog = CATALOG.with_suffix(".json.tmp")
+    temporary_catalog.write_text(
         json.dumps(catalog, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8"
     )
+    temporary_catalog.replace(CATALOG)
 
     print(f"Updated mod: {mod.get('name', mod_id)}")
     print(f"Version: {previous_version} -> {new_version}")
