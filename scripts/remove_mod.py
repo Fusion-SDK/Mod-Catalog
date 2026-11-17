@@ -84,6 +84,29 @@ def main():
     if mod["creator"].casefold() != creator.casefold():
         raise ValueError("Mod creator does not match the catalog.")
 
+    dependent_mods = []
+
+    for candidate in mods:
+        if candidate is mod:
+            continue
+
+        if not isinstance(candidate, dict):
+            continue
+
+        references = set(candidate.get("dependencies", [])) | set(
+            candidate.get("conflicts", [])
+        )
+
+        if mod["id"] in references:
+            dependent_mods.append(candidate.get("id", "<unknown>"))
+
+    if dependent_mods:
+        raise ValueError(
+            "Cannot remove this mod while other catalog entries reference it: "
+            + ", ".join(sorted(dependent_mods))
+            + ". Update those entries first."
+        )
+
     # Remove only the exact verified entry.
     removed = mods.pop(index)
 
