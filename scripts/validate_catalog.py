@@ -3,7 +3,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -82,6 +82,23 @@ def validate_https_url(value, field_name):
     )
 
 
+
+
+def validate_github_release_asset(value, field_name, extension):
+    validate_https_url(value, field_name)
+
+    parsed = urlparse(value)
+    path = unquote(parsed.path).casefold()
+
+    require(
+        parsed.hostname is not None
+        and parsed.hostname.casefold() == "github.com"
+        and "/releases/download/" in path
+        and path.endswith(extension.casefold()),
+        f"{field_name} must point to a GitHub Release {extension} asset."
+    )
+
+
 def validate_id_list(values, field_name, mod_id):
     require(
         isinstance(values, list),
@@ -123,9 +140,10 @@ def validate_fusion_package(fusion_package, mod_id):
         f"Fusion package for '{mod_id}' must use ZIP."
     )
 
-    validate_https_url(
+    validate_github_release_asset(
         fusion_package.get("downloadUrl"),
-        f"Fusion package download URL for '{mod_id}'"
+        f"Fusion package download URL for '{mod_id}'",
+        ".zip"
     )
 
     checksum = fusion_package.get("sha256")
@@ -366,9 +384,22 @@ def validate_mod(mod, known_ids):
         f"Release URL for '{mod_id}'"
     )
 
-    validate_https_url(
+    validate_github_release_asset(
         mod["downloadUrl"],
-        f"Download URL for '{mod_id}'"
+        f"Download URL for '{mod_id}'",
+        ".zip" if runtime == "fusion" else ".geode"
+    )
+
+    parsed_release = urlparse(mod["releaseUrl"])
+    release_path = [
+        part for part in parsed_release.path.split("/") if part
+    ]
+
+    require(
+        parsed_release.hostname is not None
+        and parsed_release.hostname.casefold() == "github.com"
+        and len(release_path) >= 2,
+        f"Release URL for '{mod_id}' must point to a GitHub repository release."
     )
 
     parsed_repository = urlparse(mod["repository"])
